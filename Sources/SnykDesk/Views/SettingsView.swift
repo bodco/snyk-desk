@@ -4,19 +4,10 @@ import SnykDeskCore
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var pendingRemoval: RepoConfig?
+    @AppStorage("settingsRepositoriesExpanded") private var repositoriesExpanded = false
 
     var body: some View {
         Form {
-            Section("Repositories") {
-                if model.config.repos.isEmpty {
-                    Text("No repositories yet.").foregroundStyle(.secondary)
-                }
-                ForEach($model.config.repos) { $repo in
-                    RepoSettingsRow(repo: $repo, projects: model.projects) { pendingRemoval = repo }
-                }
-                Button("Add repositories…") { model.addRepos() }
-            }
-
             Section("Launcher") {
                 LauncherStatusView()
                 HStack {
@@ -75,9 +66,23 @@ struct SettingsView: View {
             }
 
             Section("Results") {
-                Text("By default each repository's scans go to a subfolder next to the launcher, one folder per scan. You can pick another folder for any repository above.")
+                Text("By default each repository's scans go to a subfolder next to the launcher, one folder per scan. You can pick another folder for any repository under Repositories below.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("Run setup again") { model.restartOnboarding() }
+            }
+
+            Section {
+                DisclosureGroup(isExpanded: $repositoriesExpanded) {
+                    if model.config.repos.isEmpty {
+                        Text("No repositories yet.").foregroundStyle(.secondary)
+                    }
+                    ForEach($model.config.repos) { $repo in
+                        RepoSettingsRow(repo: $repo, projects: model.projects) { pendingRemoval = repo }
+                    }
+                    Button("Add repositories…") { model.addRepos() }
+                } label: {
+                    Text("Repositories (\(model.config.repos.count))").font(.headline)
+                }
             }
         }
         .formStyle(.grouped)
@@ -101,7 +106,7 @@ struct RepoSettingsRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                TextField("Name", text: $repo.name).textFieldStyle(.plain).font(.headline)
+                TextField("Name", text: $repo.name).textFieldStyle(.plain).font(.headline).labelsHidden()
                 Spacer()
                 Button(role: .destructive, action: onRemove) {
                     Image(systemName: "trash")
@@ -114,6 +119,7 @@ struct RepoSettingsRow: View {
                 TextField("Project", text: $repo.project)
                     .textFieldStyle(.roundedBorder)
                     .font(.caption)
+                    .labelsHidden()
                     .frame(maxWidth: 200)
                 Menu {
                     ForEach(projects, id: \.self) { name in
@@ -125,6 +131,7 @@ struct RepoSettingsRow: View {
                     Image(systemName: "chevron.down")
                 }
                 .menuStyle(.button)
+                .menuIndicator(.hidden)
                 .buttonStyle(.borderless)
                 .fixedSize()
             }

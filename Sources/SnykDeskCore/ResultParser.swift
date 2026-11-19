@@ -39,6 +39,7 @@ public enum ResultParser {
                 let fixedIn = (vuln["fixedIn"] as? [String]) ?? []
                 let fix = fixedIn.isEmpty ? nil : "Upgrade \(package) to \(fixedIn.joined(separator: ", "))"
                 let cwes = ((vuln["identifiers"] as? [String: Any])?["CWE"] as? [String]) ?? []
+                let cves = ((vuln["identifiers"] as? [String: Any])?["CVE"] as? [String]) ?? []
                 let path = ((vuln["from"] as? [String]) ?? []).joined(separator: " > ")
                 let location = target.isEmpty ? "\(package)@\(version)" : "\(package)@\(version) in \(target)"
                 findings.append(Finding(
@@ -52,7 +53,9 @@ public enum ResultParser {
                     fix: fix,
                     url: "https://security.snyk.io/vuln/\(vulnId)",
                     cwe: cwes.isEmpty ? nil : cwes,
-                    advice: shorten(vuln["description"] as? String)))
+                    advice: shorten(vuln["description"] as? String),
+                    cve: cves.isEmpty ? nil : cves,
+                    score: vuln["cvssScore"] as? Double))
             }
         }
         return (sorted(findings), projects.count, errors)
@@ -143,11 +146,36 @@ public enum ResultParser {
         return Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
+    /// The lines of a Snyk log that say what went wrong. Boilerplate (Docs, Tip, ID, Status) is dropped.
     static func tail(_ url: URL, lines: Int = 3) -> String? {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        let rows = text.split(separator: "\n").map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        let noise = ["Docs:", "Tip:", "ID:", "Status:", "Please see our documentation"]
+        let rows = text.split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { row in !row.isEmpty && !noise.contains { row.hasPrefix($0) } }
         guard !rows.isEmpty else { return nil }
+        if let first = rows.firstIndex(where: { $0.hasPrefix("ERROR") || $0.hasPrefix("FATAL") }) {
+            return rows[first...].prefix(lines).joined(separator: "\n")
+        }
         return rows.suffix(lines).joined(separator: "\n")
+    }
+
+    /// Sub-projects Snyk could not read: a path line ending in ":" followed by "Something went wrong",
+    /// or "Monitoring <path>..." followed by the same sentence.
+    public static func failedSubProjects(log: String, base: String) -> [String] {
+        let rows = log.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        var failed: [String] = []
+        for (index, row) in rows.enumerated() {
+            var path: String?
+            if row.hasPrefix("/"), row.hasSuffix(":") { path = String(row.dropLast()) }
+            if row.hasPrefix("Monitoring "), row.hasSuffix("...") { path = String(row.dropFirst(11).dropLast(3)) }
+            guard let found = path else { continue }
+            let following = rows[(index + 1)...].prefix(3)
+            if following.contains(where: { $0.hasPrefix("Something went wrong") }) {
+                failed.append(found.hasPrefix(base) ? String(found.dropFirst(base.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/")) : found)
+            }
+        }
+        return failed
     }
 
     /// First Maven `[ERROR]` lines from the `mvn dependency:tree` run the launcher makes after a Snyk Maven failure.
@@ -177,7 +205,7 @@ public enum ResultParser {
     }
 
     /// Loads one scan folder: `results/<repo-id>/<timestamp>/`.
-    public static func loadRun(directory: URL, repoId: UUID) -> ScanRun {
+    public static func loadRun(directory: URL, repoId: UUID, repoPath: String? = nil) -> ScanRun {
         let name = directory.lastPathComponent
         let date = folderDate.date(from: name)
             ?? ((try? FileManager.default.attributesOfItem(atPath: directory.path))?[.creationDate] as? Date)
@@ -212,12 +240,16 @@ public enum ResultParser {
                 notes.append(hint)
             }
         }
-        if let maven = mavenReason(directory.appendingPathComponent("maven.log")) {
+        if let maven = mavenReason(directory.appendingPathComponent("maven.log"))
+            ?? mavenReason(directory.appendingPathComponent("deps.debug.log")) {
             notes.append("maven: \(maven)")
         }
-        for step in ["deps", "code", "monitor"] {
-            if let text = try? String(contentsOf: directory.appendingPathComponent("\(step).note"), encoding: .utf8) {
-                notes.append("\(step): \(text.trimmingCharacters(in: .whitespacesAndNewlines))")
+        for step in ["deps", "monitor"] {
+            guard let log = try? String(contentsOf: directory.appendingPathComponent("\(step).log"), encoding: .utf8) else { continue }
+            let failed = failedSubProjects(log: log, base: repoPath ?? "")
+            if !failed.isEmpty {
+                let name = step == "deps" ? "dependencies" : "monitor"
+                notes.append("\(name): Snyk could not read \(failed.joined(separator: ", ")). The rest of the repository was handled. See \(step).log.")
             }
         }
         return ScanRun(id: name, repoId: repoId, date: date, dependencies: deps, code: code, monitor: monitor,
@@ -225,24 +257,24 @@ public enum ResultParser {
     }
 
     /// All scans in one results folder: one subfolder per scan, named by its timestamp.
-    public static func loadRuns(folder: URL, repoId: UUID) -> [ScanRun] {
+    public static func loadRuns(folder: URL, repoId: UUID, repoPath: String? = nil) -> [ScanRun] {
         guard let items = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else {
             return []
         }
         return items
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
             .filter { folderDate.date(from: $0.lastPathComponent) != nil }
-            .map { loadRun(directory: $0, repoId: repoId) }
+            .map { loadRun(directory: $0, repoId: repoId, repoPath: repoPath) }
     }
 
     /// All scans of one repository, newest first. Also reads scans that 0.1.0 kept in Application Support.
     public static func loadRuns(repo: RepoConfig, config: AppConfig) -> [ScanRun] {
         let current = URL(fileURLWithPath: ResultsLocation.folder(for: repo, config: config), isDirectory: true)
         let legacy = Paths.results.appendingPathComponent(repo.id.uuidString, isDirectory: true)
-        var runs = loadRuns(folder: current, repoId: repo.id)
+        var runs = loadRuns(folder: current, repoId: repo.id, repoPath: repo.path)
         if legacy.standardizedFileURL != current.standardizedFileURL {
             let known = Set(runs.map(\.id))
-            runs += loadRuns(folder: legacy, repoId: repo.id).filter { !known.contains($0.id) }
+            runs += loadRuns(folder: legacy, repoId: repo.id, repoPath: repo.path).filter { !known.contains($0.id) }
         }
         return runs.sorted { $0.date > $1.date }
     }

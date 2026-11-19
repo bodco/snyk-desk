@@ -8,28 +8,8 @@ public enum ReportWriter {
     public static let summaryName = "summary.json"
 
     public static func markdown(run: ScanRun, repo: String, project: String, path: String) -> String {
-        let counts = run.counts
-        var lines = [
-            "# \(repo) - Snyk scan \(run.id)",
-            "",
-            "- Project: \(project)",
-            "- Path: \(path)",
-            "- Dependencies: \(run.dependencies.rawValue), Code: \(run.code.rawValue), Monitor: \(run.monitor.rawValue)",
-            "- Critical \(counts.critical), High \(counts.high), Medium \(counts.medium), Low \(counts.low)",
-        ]
-        if !run.notes.isEmpty {
-            lines += ["", "## Notes", ""] + run.notes.map { "- " + $0.replacingOccurrences(of: "\n", with: " ") }
-        }
-        lines += ["", "## Findings", ""]
-        if run.findings.isEmpty { lines.append("None.") }
-        for (index, finding) in run.findings.enumerated() {
-            lines.append("### \(index + 1). \(finding.title)")
-            lines.append("")
-            lines.append(PromptBuilder.findingText(finding).split(separator: "\n", omittingEmptySubsequences: false)
-                .dropFirst().map { "- " + $0 }.joined(separator: "\n"))
-            lines.append("")
-        }
-        return lines.joined(separator: "\n") + "\n"
+        ReportBuilder.markdown(findings: run.findings, run: run,
+                               context: ReportContext(repo: repo, project: project, path: path, scanDate: run.id))
     }
 
     public static func summaryJSON(run: ScanRun, repo: String, project: String, path: String) -> Data? {

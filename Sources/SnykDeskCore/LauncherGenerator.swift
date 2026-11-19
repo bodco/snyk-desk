@@ -163,6 +163,8 @@ public enum LauncherGenerator {
                 slog "$out" "deps: Maven failed, running mvn to capture the real error (maven.log)"
                 mvn -B dependency:tree > "$out/maven.log" 2>&1
                 slog "$out" "mvn dependency:tree exit $?"
+                "$SNYK" test "${scope[@]}" -d > "$out/deps.debug.log" 2>&1
+                slog "$out" "snyk debug run (deps.debug.log) exit $?"
               fi
             fi
           fi
