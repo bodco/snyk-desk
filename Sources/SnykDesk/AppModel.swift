@@ -326,7 +326,12 @@ final class AppModel: ObservableObject {
     func reloadRuns() {
         var all: [UUID: [ScanRun]] = [:]
         for repo in config.repos {
-            all[repo.id] = ResultParser.loadRuns(repo: repo, config: config)
+            let loaded = ResultParser.loadRuns(repo: repo, config: config)
+            all[repo.id] = loaded
+            // Keep a readable copy of every finished scan next to the raw files (also fills in older scans).
+            for run in loaded {
+                ReportWriter.save(run: run, repo: repo.name, project: repo.project, path: repo.path)
+            }
         }
         runs = all
     }

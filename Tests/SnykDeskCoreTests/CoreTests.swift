@@ -520,4 +520,25 @@ final class ToolTests: XCTestCase {
         XCTAssertTrue(flat.contains("config unset api"))
         XCTAssertTrue(flat.contains("config unset INTERNAL_OAUTH_TOKEN_STORAGE"))
     }
+
+    func testReportIsWrittenOnceForFinishedScans() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("2026-11-20T10-00-00")
+        try? FileManager.default.removeItem(at: dir)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let finding = Finding(id: "1", kind: .code, severity: .high, title: "XSS", issueId: "python/XSS",
+                              location: "a.py:3", detail: "bad", url: "https://x", cwe: ["CWE-79"])
+        var run = ScanRun(id: "2026-11-20T10-00-00", repoId: UUID(), date: Date(), dependencies: .clean, code: .issues,
+                          monitor: .skipped, dependencyProjects: 0, findings: [finding], notes: [], directory: dir)
+        XCTAssertFalse(ReportWriter.save(run: run, repo: "server", project: "Acme", path: "/p"), "not finished yet")
+        try "1".write(to: dir.appendingPathComponent("finished"), atomically: true, encoding: .utf8)
+        XCTAssertTrue(ReportWriter.save(run: run, repo: "server", project: "Acme", path: "/p"))
+        XCTAssertFalse(ReportWriter.save(run: run, repo: "server", project: "Acme", path: "/p"), "only once")
+        let text = try String(contentsOf: dir.appendingPathComponent("report.md"), encoding: .utf8)
+        XCTAssertTrue(text.contains("XSS"))
+        XCTAssertTrue(text.contains("a.py:3"))
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("summary.json"))) as? [String: Any]
+        XCTAssertEqual((json?["counts"] as? [String: Int])?["high"], 1)
+        run.directory = nil
+        XCTAssertFalse(ReportWriter.save(run: run, repo: "x", project: "y", path: "z"))
+    }
 }
