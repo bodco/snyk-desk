@@ -88,10 +88,13 @@ public struct Finding: Codable, Identifiable, Hashable, Sendable {
     public var cwe: [String]?
     /// Snyk's own explanation of the problem, shortened.
     public var advice: String?
+    public var cve: [String]?
+    /// CVSS score from Snyk, when it gives one.
+    public var score: Double?
 
     public init(id: String, kind: FindingKind, severity: Severity, title: String, issueId: String,
                 location: String, detail: String, fix: String? = nil, url: String? = nil,
-                cwe: [String]? = nil, advice: String? = nil) {
+                cwe: [String]? = nil, advice: String? = nil, cve: [String]? = nil, score: Double? = nil) {
         self.id = id
         self.kind = kind
         self.severity = severity
@@ -103,6 +106,8 @@ public struct Finding: Codable, Identifiable, Hashable, Sendable {
         self.url = url
         self.cwe = cwe
         self.advice = advice
+        self.cve = cve
+        self.score = score
     }
 }
 

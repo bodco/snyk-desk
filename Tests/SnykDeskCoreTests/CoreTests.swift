@@ -395,13 +395,13 @@ final class ToolTests: XCTestCase {
         try "2".write(to: dir.appendingPathComponent("deps.exit"), atomically: true, encoding: .utf8)
         try "[INFO] x\n[ERROR] Could not transfer artifact foo from private-repo\n".write(
             to: dir.appendingPathComponent("maven.log"), atomically: true, encoding: .utf8)
-        try "Some sub-projects could not be monitored.".write(
-            to: dir.appendingPathComponent("monitor.note"), atomically: true, encoding: .utf8)
-        let run = ResultParser.loadRun(directory: dir, repoId: UUID())
+        try "  /code/app/spikes/m0/requirements.txt:\n    Something went wrong getting dependencies\n".write(
+            to: dir.appendingPathComponent("monitor.log"), atomically: true, encoding: .utf8)
+        let run = ResultParser.loadRun(directory: dir, repoId: UUID(), repoPath: "/code/app")
         XCTAssertEqual(run.directory, dir)
         XCTAssertTrue(run.notes.contains { $0.hasPrefix("maven: [ERROR] Could not transfer") })
         XCTAssertTrue(run.notes.contains { $0.hasPrefix("Hint: Maven") })
-        XCTAssertTrue(run.notes.contains { $0.hasPrefix("monitor: Some sub-projects") })
+        XCTAssertTrue(run.notes.contains { $0.hasPrefix("monitor: Snyk could not read spikes/m0/requirements.txt") })
     }
 
     func testLauncherWritesScanLogAndTreatsPartialMonitorAsDone() throws {
@@ -540,5 +540,48 @@ final class ToolTests: XCTestCase {
         XCTAssertEqual((json?["counts"] as? [String: Int])?["high"], 1)
         run.directory = nil
         XCTAssertFalse(ReportWriter.save(run: run, repo: "x", project: "y", path: "z"))
+    }
+
+    func testErrorTailSkipsBoilerplate() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).log")
+        try """
+        
+         ERROR   Cannot build Maven dependency tree (SNYK-OS-MAVEN-0018)
+        
+        Status:  422 Unprocessable Entity
+        Docs:    https://docs.snyk.io/x
+        Tip:     Try snyk doctor
+        ID:      urn:snyk:interaction:1
+        """.write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertEqual(ResultParser.tail(file), "ERROR   Cannot build Maven dependency tree (SNYK-OS-MAVEN-0018)")
+    }
+
+    func testFailedSubProjectsAreNamed() {
+        let log = """
+        /code/app/spikes/m0/requirements.txt:
+          Something went wrong getting dependencies
+        Testing /code/app...
+        """
+        XCTAssertEqual(ResultParser.failedSubProjects(log: log, base: "/code/app"), ["spikes/m0/requirements.txt"])
+        XCTAssertEqual(ResultParser.failedSubProjects(log: "Monitoring /code/app/x/pom.xml...\n\nSomething went wrong getting dependencies", base: "/code/app"), ["x/pom.xml"])
+        XCTAssertTrue(ResultParser.failedSubProjects(log: "all fine", base: "/code").isEmpty)
+    }
+
+    func testReportIsGroupedBySeverityWithLinks() {
+        let dep = Finding(id: "d", kind: .dependency, severity: .critical, title: "RCE in lib", issueId: "SNYK-1",
+                          location: "lib@1", detail: "app > lib", fix: "Upgrade lib to 2", url: "https://security.snyk.io/vuln/SNYK-1",
+                          cwe: ["CWE-94"], advice: "Bad things <b>.", cve: ["CVE-2024-1"], score: 9.8)
+        let code = Finding(id: "c", kind: .code, severity: .low, title: "Path Traversal", issueId: "java/PT",
+                           location: "A.java:5", detail: "input flows", url: "https://cwe.mitre.org/data/definitions/23.html", cwe: ["CWE-23"])
+        let ctx = ReportContext(repo: "api", project: "Acme", path: "/code/api", scanDate: "today", filter: "all", generated: "now")
+        let md = ReportBuilder.markdown(findings: [code, dep], run: nil, context: ctx)
+        XCTAssertTrue(md.range(of: "## Critical (1)")!.lowerBound < md.range(of: "## Low (1)")!.lowerBound)
+        XCTAssertTrue(md.contains("**CVSS score:** 9.8"))
+        XCTAssertTrue(md.contains("https://nvd.nist.gov/vuln/detail/CVE-2024-1"))
+        XCTAssertTrue(md.contains("https://cwe.mitre.org/data/definitions/94.html"))
+        let html = ReportBuilder.html(findings: [dep], run: nil, context: ctx)
+        XCTAssertTrue(html.contains("Bad things &lt;b&gt;."))
+        XCTAssertTrue(html.contains("<a href=\"https://nvd.nist.gov/vuln/detail/CVE-2024-1\">"))
+        XCTAssertTrue(ReportBuilder.markdown(findings: [], run: nil, context: ctx).contains("No vulnerabilities."))
     }
 }

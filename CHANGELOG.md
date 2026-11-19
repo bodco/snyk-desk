@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4 - 2026-11-20
+
+- Report button next to Scan now: a full report of the vulnerabilities shown (filters apply) as PDF, Markdown or HTML, grouped by severity, with every detail the scan has (location, dependency path, CVSS, CWE, CVE, fix, Snyk's explanation) and links for deeper analysis (Snyk database, NVD, CWE).
+- Dependencies and Code in the header now say how many issues each found, and clicking one filters the list to it.
+- Clicking a repository card on the dashboard opens it.
+- Scan problems are readable: the error line is shown instead of the Docs/Tip/ID footer, and a sub-project Snyk could not read (for example `spikes/m0/requirements.txt`) is named. After a failed Maven scan the launcher also saves Snyk's debug output to `deps.debug.log`.
+
 ## 0.2.3 - 2026-11-20
 
 - The release zip now also holds a short "Read me first" with the first-launch steps (EN and UK), like the Pacenote DMG.

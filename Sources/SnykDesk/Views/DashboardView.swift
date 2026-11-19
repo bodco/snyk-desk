@@ -136,6 +136,8 @@ struct RepoCard: View {
         .padding(14)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture(perform: open)
     }
 }
 

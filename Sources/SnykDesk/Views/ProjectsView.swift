@@ -122,6 +122,14 @@ struct ProjectDetail: View {
                                  filter: filter, scanDate: scanDate(run), sameIssue: sameIssue)
     }
 
+    private func saveReport(_ format: ReportFormat, run: ScanRun) {
+        let context = ReportContext(repo: repo.name, project: repo.project, path: repo.path,
+                                    scanDate: scanDate(run), filter: filterDescription)
+        if let error = ReportExport.save(format: format, findings: findings, run: run, context: context) {
+            model.lastError = error
+        }
+    }
+
     private func singlePrompt(_ finding: Finding) -> String {
         PromptBuilder.singlePrompt(finding, repo: repo.name, project: repo.project, path: repo.path)
     }
@@ -135,6 +143,17 @@ struct ProjectDetail: View {
                     Text(repo.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 Spacer()
+                if let run, !run.findings.isEmpty {
+                    Menu {
+                        ForEach(ReportFormat.allCases, id: \.self) { format in
+                            Button("Save as \(format.rawValue)…") { saveReport(format, run: run) }
+                        }
+                    } label: {
+                        Label("Report", systemImage: "doc.text")
+                    }
+                    .fixedSize()
+                    .help("A full report of the vulnerabilities shown now (the filters apply), grouped by severity with every detail and links for deeper analysis")
+                }
                 Button {
                     model.scan([repo.id])
                 } label: {
@@ -193,7 +212,7 @@ struct ProjectDetail: View {
                     .help("Copies a prompt with the vulnerabilities shown now (the severity and type filters apply). Paste it into a Claude project that has the code.")
                 }
 
-                RunSummary(run: run)
+                RunSummary(run: run) { filter = $0; minimum = .low }
 
                 if findings.isEmpty {
                     ContentUnavailableView("No vulnerabilities", systemImage: "checkmark.shield",
@@ -219,6 +238,7 @@ struct ProjectDetail: View {
 
 struct RunSummary: View {
     let run: ScanRun
+    var onPick: (ProjectDetail.KindFilter) -> Void = { _ in }
     @EnvironmentObject var model: AppModel
 
     var body: some View {
@@ -226,8 +246,10 @@ struct RunSummary: View {
             HStack(spacing: 16) {
                 CountsRow(counts: run.counts)
                 Spacer()
-                StepStatusLabel(title: "Dependencies", status: run.dependencies)
-                StepStatusLabel(title: "Code", status: run.code)
+                StepStatusLabel(title: "Dependencies", status: run.dependencies,
+                                count: run.findings.filter { $0.kind == .dependency }.count) { onPick(.dependencies) }
+                StepStatusLabel(title: "Code", status: run.code,
+                                count: run.findings.filter { $0.kind == .code }.count) { onPick(.code) }
                 StepStatusLabel(title: "Monitor", status: run.monitor)
             }
             ForEach(run.notes, id: \.self) { note in

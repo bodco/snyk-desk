@@ -60,11 +60,28 @@ struct SeverityTag: View {
 struct StepStatusLabel: View {
     let title: String
     let status: StepStatus
+    var count: Int? = nil
+    var pick: (() -> Void)? = nil
+
+    private var text: String {
+        if let count, status == .issues || count > 0 { return "\(title): \(count) found" }
+        return "\(title): \(status.label)"
+    }
 
     var body: some View {
+        if let pick, (count ?? 0) > 0 {
+            Button(action: pick) { content }
+                .buttonStyle(.plain)
+                .help("Show these in the list")
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         HStack(spacing: 4) {
             Image(systemName: icon).foregroundStyle(color)
-            Text("\(title): \(status.label)").font(.caption)
+            Text(text).font(.caption)
         }
     }
 
