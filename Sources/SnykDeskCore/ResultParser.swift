@@ -38,6 +38,7 @@ public enum ResultParser {
                 seen.insert(key)
                 let fixedIn = (vuln["fixedIn"] as? [String]) ?? []
                 let fix = fixedIn.isEmpty ? nil : "Upgrade \(package) to \(fixedIn.joined(separator: ", "))"
+                let cwes = ((vuln["identifiers"] as? [String: Any])?["CWE"] as? [String]) ?? []
                 let path = ((vuln["from"] as? [String]) ?? []).joined(separator: " > ")
                 let location = target.isEmpty ? "\(package)@\(version)" : "\(package)@\(version) in \(target)"
                 findings.append(Finding(
@@ -49,10 +50,33 @@ public enum ResultParser {
                     location: location,
                     detail: path,
                     fix: fix,
-                    url: "https://security.snyk.io/vuln/\(vulnId)"))
+                    url: "https://security.snyk.io/vuln/\(vulnId)",
+                    cwe: cwes.isEmpty ? nil : cwes,
+                    advice: shorten(vuln["description"] as? String)))
             }
         }
         return (sorted(findings), projects.count, errors)
+    }
+
+    /// Link to the MITRE page of a CWE id like "CWE-79". Snyk Code results carry no link of their own.
+    static func cweLink(_ cwe: String?) -> String? {
+        guard let cwe, cwe.uppercased().hasPrefix("CWE-"), let number = Int(cwe.dropFirst(4)) else { return nil }
+        return "https://cwe.mitre.org/data/definitions/\(number).html"
+    }
+
+    /// The "Details" part of a Snyk Code rule help text.
+    static func detailsSection(_ markdown: String) -> String {
+        guard let start = markdown.range(of: "## Details") else { return markdown }
+        let rest = markdown[start.upperBound...]
+        if let end = rest.range(of: "\n## ") { return String(rest[..<end.lowerBound]) }
+        return String(rest)
+    }
+
+    static func shorten(_ text: String?, limit: Int = 900) -> String? {
+        guard let text else { return nil }
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+        return cleaned.count > limit ? String(cleaned.prefix(limit)) + "..." : cleaned
     }
 
     /// Parses `snyk code test --sarif-file-output` (SARIF 2.1).
@@ -61,11 +85,17 @@ public enum ResultParser {
         var findings: [Finding] = []
         for run in (object["runs"] as? [[String: Any]]) ?? [] {
             var rules: [String: String] = [:]
+            var ruleCWE: [String: [String]] = [:]
+            var ruleAdvice: [String: String] = [:]
             if let tool = run["tool"] as? [String: Any], let driver = tool["driver"] as? [String: Any] {
                 for rule in (driver["rules"] as? [[String: Any]]) ?? [] {
                     guard let ruleId = rule["id"] as? String else { continue }
                     let short = (rule["shortDescription"] as? [String: Any])?["text"] as? String
                     rules[ruleId] = short ?? (rule["name"] as? String) ?? ruleId
+                    ruleCWE[ruleId] = (rule["properties"] as? [String: Any])?["cwe"] as? [String] ?? []
+                    if let markdown = (rule["help"] as? [String: Any])?["markdown"] as? String {
+                        ruleAdvice[ruleId] = shorten(detailsSection(markdown))
+                    }
                 }
             }
             for result in (run["results"] as? [[String: Any]]) ?? [] {
@@ -92,7 +122,10 @@ public enum ResultParser {
                     title: rules[ruleId] ?? ruleId,
                     issueId: ruleId,
                     location: location,
-                    detail: message))
+                    detail: message,
+                    url: cweLink(ruleCWE[ruleId]?.first),
+                    cwe: (ruleCWE[ruleId]?.isEmpty ?? true) ? nil : ruleCWE[ruleId],
+                    advice: ruleAdvice[ruleId]))
             }
         }
         return sorted(findings)

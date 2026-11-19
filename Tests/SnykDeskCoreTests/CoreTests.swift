@@ -444,4 +444,43 @@ final class ToolTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: Paths.logs.appendingPathComponent("snyk-desk.old.log").path))
         XCTAssertTrue(try String(contentsOf: AppLog.file, encoding: .utf8).contains("after"))
     }
+
+    func testCodeFindingsGetCweLinkAndAdvice() throws {
+        let sarif = """
+        {"runs":[{"tool":{"driver":{"rules":[{"id":"python/XSS","shortDescription":{"text":"Cross-site Scripting (XSS)"},
+        "help":{"markdown":"\\n## Details\\n\\nUnsanitized input is rendered.\\n\\n## Best practices\\n* x"},
+        "properties":{"cwe":["CWE-79"]}}]}},
+        "results":[{"ruleId":"python/XSS","level":"error","message":{"text":"Unsanitized input"},
+        "locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.py"},"region":{"startLine":3}}}]}]}]}
+        """
+        let found = ResultParser.parseCode(Data(sarif.utf8))
+        XCTAssertEqual(found.count, 1)
+        XCTAssertEqual(found[0].url, "https://cwe.mitre.org/data/definitions/79.html")
+        XCTAssertEqual(found[0].cwe, ["CWE-79"])
+        XCTAssertEqual(found[0].advice, "Unsanitized input is rendered.")
+    }
+
+    func testPromptsCarryRepoFilterAndFindings() {
+        let a = Finding(id: "1", kind: .code, severity: .high, title: "XSS", issueId: "python/XSS",
+                        location: "a.py:3", detail: "bad", url: "https://x")
+        let b = Finding(id: "2", kind: .dependency, severity: .critical, title: "RCE", issueId: "SNYK-1",
+                        location: "lib@1", detail: "app > lib", fix: "Upgrade lib to 2")
+        let text = PromptBuilder.repoPrompt(findings: [a, b], repo: "server", project: "Acme", path: "/code/server",
+                                            filter: "High і вище", scanDate: "today")
+        XCTAssertTrue(text.contains("/code/server"))
+        XCTAssertTrue(text.contains("High і вище"))
+        XCTAssertTrue(text.contains("Critical 1, High 1"))
+        XCTAssertTrue(text.range(of: "RCE")!.lowerBound < text.range(of: "XSS")!.lowerBound)
+        let single = PromptBuilder.singlePrompt(a, repo: "server", project: "Acme", path: "/code/server")
+        XCTAssertTrue(single.contains("a.py:3"))
+        XCTAssertTrue(single.contains("Link: https://x"))
+    }
+
+    func testLongPromptListsTheRestByTitle() {
+        let many = (0..<(PromptBuilder.fullLimit + 5)).map {
+            Finding(id: "\($0)", kind: .code, severity: .low, title: "T\($0)", issueId: "r", location: "f:\($0)", detail: "")
+        }
+        let text = PromptBuilder.repoPrompt(findings: many, repo: "r", project: "p", path: "/p", filter: "f", scanDate: "d")
+        XCTAssertTrue(text.contains("Ще 5 без деталей"))
+    }
 }

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import SnykDeskCore
 
@@ -97,6 +98,34 @@ struct ProjectDetail: View {
         }
     }
 
+    private var filterDescription: String {
+        let severity: String
+        switch minimum {
+        case .low: severity = "усі рівні"
+        case .medium: severity = "Medium і вище"
+        case .high: severity = "High і вище"
+        case .critical: severity = "тільки Critical"
+        }
+        let kind: String
+        switch filter {
+        case .all: kind = "залежності і код"
+        case .dependencies: kind = "тільки залежності"
+        case .code: kind = "тільки код"
+        }
+        return "\(severity), \(kind)"
+    }
+
+    private func scanDate(_ run: ScanRun) -> String { run.date.formatted(date: .abbreviated, time: .shortened) }
+
+    private func repoPrompt(_ items: [Finding], filter: String, sameIssue: String?, run: ScanRun) -> String {
+        PromptBuilder.repoPrompt(findings: items, repo: repo.name, project: repo.project, path: repo.path,
+                                 filter: filter, scanDate: scanDate(run), sameIssue: sameIssue)
+    }
+
+    private func singlePrompt(_ finding: Finding) -> String {
+        PromptBuilder.singlePrompt(finding, repo: repo.name, project: repo.project, path: repo.path)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
@@ -155,6 +184,13 @@ struct ProjectDetail: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(maxWidth: 280)
+                    Button {
+                        Clipboard.copy(repoPrompt(findings, filter: filterDescription, sameIssue: nil, run: run))
+                    } label: {
+                        Label("Copy to Claude", systemImage: "doc.on.doc")
+                    }
+                    .disabled(findings.isEmpty)
+                    .help("Copies a prompt with the vulnerabilities shown now (the severity and type filters apply). Paste it into a Claude project that has the code.")
                 }
 
                 RunSummary(run: run)
@@ -164,7 +200,14 @@ struct ProjectDetail: View {
                                            description: Text("Nothing matches the filters in this scan."))
                 } else {
                     List(findings) { finding in
-                        FindingRow(finding: finding)
+                        FindingRow(finding: finding,
+                                   copyDetails: { Clipboard.copy(PromptBuilder.findingText(finding)) },
+                                   copyPrompt: { Clipboard.copy(singlePrompt(finding)) },
+                                   copySameType: {
+                                       let same = run.findings.filter { $0.issueId == finding.issueId && $0.kind == finding.kind }
+                                       Clipboard.copy(repoPrompt(same, filter: "тип \(finding.title)", sameIssue: finding.title, run: run))
+                                   },
+                                   sameTypeCount: run.findings.filter { $0.issueId == finding.issueId && $0.kind == finding.kind }.count)
                     }
                     .listStyle(.inset)
                 }
@@ -208,8 +251,19 @@ struct RunSummary: View {
     }
 }
 
+enum Clipboard {
+    static func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+}
+
 struct FindingRow: View {
     let finding: Finding
+    var copyDetails: () -> Void = {}
+    var copyPrompt: () -> Void = {}
+    var copySameType: () -> Void = {}
+    var sameTypeCount = 1
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -231,11 +285,24 @@ struct FindingRow: View {
                 }
             }
             Spacer()
+            Menu {
+                Button("Copy details") { copyDetails() }
+                Button("Copy with a prompt for Claude") { copyPrompt() }
+                if sameTypeCount > 1 {
+                    Button("Copy prompt for all \(sameTypeCount) of this type") { copySameType() }
+                }
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Copy this vulnerability, with or without a prompt for Claude")
             if let link = finding.url, let url = URL(string: link) {
                 Link(destination: url) {
                     Image(systemName: "arrow.up.right.square")
                 }
-                .help("Open in the Snyk vulnerability database")
+                .help(finding.kind == .dependency ? "Open in the Snyk vulnerability database" : "Open the CWE page for this weakness")
             }
         }
         .padding(.vertical, 4)

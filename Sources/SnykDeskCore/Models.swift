@@ -84,9 +84,14 @@ public struct Finding: Codable, Identifiable, Hashable, Sendable {
     public var detail: String
     public var fix: String?
     public var url: String?
+    /// CWE ids such as "CWE-79".
+    public var cwe: [String]?
+    /// Snyk's own explanation of the problem, shortened.
+    public var advice: String?
 
     public init(id: String, kind: FindingKind, severity: Severity, title: String, issueId: String,
-                location: String, detail: String, fix: String? = nil, url: String? = nil) {
+                location: String, detail: String, fix: String? = nil, url: String? = nil,
+                cwe: [String]? = nil, advice: String? = nil) {
         self.id = id
         self.kind = kind
         self.severity = severity
@@ -96,6 +101,8 @@ public struct Finding: Codable, Identifiable, Hashable, Sendable {
         self.detail = detail
         self.fix = fix
         self.url = url
+        self.cwe = cwe
+        self.advice = advice
     }
 }
 
