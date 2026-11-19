@@ -22,6 +22,15 @@ struct DashboardView: View {
                     if let scan = model.activeScan {
                         ScanProgressView(scan: scan)
                     }
+                    if let update = model.availableUpdate {
+                        HStack {
+                            Label("Snyk Desk \(update.version) is available.", systemImage: "arrow.down.circle")
+                            Spacer()
+                            Button("Install and restart") { model.installUpdate() }.disabled(model.isUpdating)
+                        }
+                        .padding(10)
+                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    }
                     DashboardToolsBanner()
                     if !model.hasAnyRun && model.activeScan == nil {
                         notScannedBanner

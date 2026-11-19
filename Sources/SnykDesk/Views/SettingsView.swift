@@ -37,6 +37,26 @@ struct SettingsView: View {
                 ToolsPanel()
             }
 
+            Section("Updates") {
+                HStack {
+                    Text("Snyk Desk \(AppModel.currentVersion)")
+                    Spacer()
+                    if model.availableUpdate != nil {
+                        Button("Install \(model.availableUpdate?.version ?? "") and restart") { model.installUpdate() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(model.isUpdating)
+                    } else {
+                        Button("Check for updates") { Task { await model.checkForUpdate(report: true) } }
+                    }
+                }
+                if model.isUpdating { ProgressView(value: model.updateFraction) }
+                if let status = model.updateStatus {
+                    Text(status).font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Updates are downloaded by the app itself, so macOS does not ask you to confirm the app again.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Logs") {
                 HStack {
                     Text("Every scan writes scan.log into its own folder. The app keeps its own log here.")

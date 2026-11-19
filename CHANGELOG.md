@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 - 2026-11-20
+
+- No more "Apple could not verify" on every reinstall. That warning appears for any app downloaded in a browser that is not notarized (notarization needs a paid Apple Developer ID). Two ways around it: `scripts/install.sh` (one `curl` command; curl downloads are not quarantined) and an in-app updater (Settings > Updates, plus a dashboard banner) that downloads the new release itself, swaps the app after it quits and starts it again.
+
 ## 0.2.2 - 2026-11-20
 
 - Logging: every scan folder now has a `scan.log` with the Snyk version, PATH, `JAVA_HOME`, the versions of java, mvn, node, go and uv, the commands that ran, exit codes and durations. The app keeps its own log in `~/Library/Application Support/SnykDesk/logs/snyk-desk.log` (scans, launcher, tool installs, rotated at 1 MB).

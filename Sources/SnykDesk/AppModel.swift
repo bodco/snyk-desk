@@ -45,6 +45,10 @@ final class AppModel: ObservableObject {
     @Published var toolsChecked = false
     @Published var scheduleMessage: String?
     @Published var lastError: String?
+    @Published var availableUpdate: UpdateInfo?
+    @Published var updateStatus: String?
+    @Published var updateFraction = 0.0
+    @Published var isUpdating = false
 
     var pathEnv: String = Shell.merge([], Shell.commonDirs)
     private var scanProcess: Process?
@@ -123,6 +127,7 @@ final class AppModel: ObservableObject {
         await checkAuth()
         writeLauncher()
         await refreshTools()
+        await checkForUpdate()
     }
 
     func environment() -> [String: String] { Shell.environment(path: pathEnv) }

@@ -483,4 +483,35 @@ final class ToolTests: XCTestCase {
         let text = PromptBuilder.repoPrompt(findings: many, repo: "r", project: "p", path: "/p", filter: "f", scanDate: "d")
         XCTAssertTrue(text.contains("Ще 5 без деталей"))
     }
+
+    func testVersionComparison() {
+        XCTAssertTrue(Updater.isNewer("v0.2.10", than: "0.2.9"))
+        XCTAssertTrue(Updater.isNewer("0.3.0", than: "0.2.9"))
+        XCTAssertFalse(Updater.isNewer("0.2.2", than: "0.2.2"))
+        XCTAssertFalse(Updater.isNewer("0.2.1", than: "0.2.2"))
+        XCTAssertFalse(Updater.isNewer("0.2.2", than: "0.2.2-dev"))
+        XCTAssertTrue(Updater.isNewer("0.2.3", than: "0.0.0-dev"))
+    }
+
+    func testParsesLatestRelease() {
+        let json = """
+        {"tag_name":"v0.2.3","body":"notes","assets":[{"name":"x.txt","browser_download_url":"https://a/x.txt"},
+        {"name":"SnykDesk-0.2.3.zip","browser_download_url":"https://github.com/bodco/snyk-desk/releases/download/v0.2.3/SnykDesk-0.2.3.zip"}]}
+        """
+        let info = Updater.parse(Data(json.utf8), current: "0.2.2")
+        XCTAssertEqual(info?.version, "0.2.3")
+        XCTAssertTrue(info?.assetURL.hasSuffix("SnykDesk-0.2.3.zip") == true)
+        XCTAssertNil(Updater.parse(Data(json.utf8), current: "0.2.3"))
+        XCTAssertNil(Updater.parse(Data("{\"tag_name\":\"v9.0.0\",\"assets\":[]}".utf8), current: "0.2.2"))
+        XCTAssertNil(Updater.parse(Data("nonsense".utf8), current: "0.2.2"))
+    }
+
+    func testSwapScriptIsValidBashAndQuotesPaths() throws {
+        let text = Updater.swapScript(pid: 123, newApp: "/tmp/it's/Snyk Desk.app", destination: "/Applications/Snyk Desk.app")
+        XCTAssertTrue(text.contains("kill -0 123"))
+        XCTAssertTrue(text.contains("'/tmp/it'\\''s/Snyk Desk.app'"))
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).sh")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertEqual(Shell.run("/bin/bash", ["-n", file.path]).status, 0)
+    }
 }
