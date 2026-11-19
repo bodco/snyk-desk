@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 - 2026-11-19
+
+- Scans are now saved next to the launcher by default, in one subfolder per repository (`<launcher folder>/<repository folder>/<timestamp>/`), instead of a hidden folder in Application Support.
+- Each repository can use its own results folder: choose it in Settings or on the repository's page, go back to the default, or show it in Finder.
+- Scans made with 0.1.0 are still shown in the history.
+
 ## 0.1.0 - 2026-11-19
 
 First release.

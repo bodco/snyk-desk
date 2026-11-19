@@ -153,16 +153,27 @@ public enum ResultParser {
                        dependencyProjects: projects, findings: sorted(findings), notes: notes)
     }
 
-    /// All scans of one repository, newest first.
-    public static func loadRuns(repoId: UUID) -> [ScanRun] {
-        let dir = Paths.results.appendingPathComponent(repoId.uuidString, isDirectory: true)
-        guard let items = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else {
+    /// All scans in one results folder: one subfolder per scan, named by its timestamp.
+    public static func loadRuns(folder: URL, repoId: UUID) -> [ScanRun] {
+        guard let items = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else {
             return []
         }
         return items
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
+            .filter { folderDate.date(from: $0.lastPathComponent) != nil }
             .map { loadRun(directory: $0, repoId: repoId) }
-            .sorted { $0.date > $1.date }
+    }
+
+    /// All scans of one repository, newest first. Also reads scans that 0.1.0 kept in Application Support.
+    public static func loadRuns(repo: RepoConfig, config: AppConfig) -> [ScanRun] {
+        let current = URL(fileURLWithPath: ResultsLocation.folder(for: repo, config: config), isDirectory: true)
+        let legacy = Paths.results.appendingPathComponent(repo.id.uuidString, isDirectory: true)
+        var runs = loadRuns(folder: current, repoId: repo.id)
+        if legacy.standardizedFileURL != current.standardizedFileURL {
+            let known = Set(runs.map(\.id))
+            runs += loadRuns(folder: legacy, repoId: repo.id).filter { !known.contains($0.id) }
+        }
+        return runs.sorted { $0.date > $1.date }
     }
 }
 

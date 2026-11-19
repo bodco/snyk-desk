@@ -165,9 +165,12 @@ public struct RepoConfig: Codable, Identifiable, Hashable, Sendable {
     public var scanCode: Bool
     public var monitor: Bool
     public var scheduled: Bool
+    /// Where this repository's scans go. nil means the default: a subfolder next to the launcher.
+    public var resultsFolder: String?
 
     public init(id: UUID = UUID(), name: String, path: String, scanDependencies: Bool = true,
-                scanCode: Bool = true, monitor: Bool = true, scheduled: Bool = true) {
+                scanCode: Bool = true, monitor: Bool = true, scheduled: Bool = true,
+                resultsFolder: String? = nil) {
         self.id = id
         self.name = name
         self.path = path
@@ -175,6 +178,55 @@ public struct RepoConfig: Codable, Identifiable, Hashable, Sendable {
         self.scanCode = scanCode
         self.monitor = monitor
         self.scheduled = scheduled
+        self.resultsFolder = resultsFolder
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Repository"
+        path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
+        scanDependencies = try c.decodeIfPresent(Bool.self, forKey: .scanDependencies) ?? true
+        scanCode = try c.decodeIfPresent(Bool.self, forKey: .scanCode) ?? true
+        monitor = try c.decodeIfPresent(Bool.self, forKey: .monitor) ?? true
+        scheduled = try c.decodeIfPresent(Bool.self, forKey: .scheduled) ?? true
+        resultsFolder = try c.decodeIfPresent(String.self, forKey: .resultsFolder)
+    }
+}
+
+/// Decides where each repository's scan results are written.
+public enum ResultsLocation {
+    static func sanitize(_ value: String) -> String {
+        var cleaned = value
+        for character in ["/", ":", "|"] {
+            cleaned = cleaned.replacingOccurrences(of: character, with: "-")
+        }
+        cleaned = cleaned.trimmingCharacters(in: .whitespaces)
+        if cleaned.isEmpty || cleaned.hasPrefix(".") { cleaned = "repo" + cleaned }
+        return cleaned
+    }
+
+    /// Default subfolder name: the repository folder's own name, which does not change when the repo is renamed in the app.
+    /// Two repositories with the same folder name get a short id suffix so their scans never mix.
+    public static func defaultFolderName(for repo: RepoConfig, in repos: [RepoConfig]) -> String {
+        let base = sanitize(URL(fileURLWithPath: repo.path).lastPathComponent)
+        let clash = repos.contains { other in
+            other.id != repo.id && sanitize(URL(fileURLWithPath: other.path).lastPathComponent) == base
+        }
+        return clash ? "\(base)-\(repo.id.uuidString.prefix(4).lowercased())" : base
+    }
+
+    public static func defaultFolder(for repo: RepoConfig, config: AppConfig) -> String {
+        if let launcher = config.launcherFolder {
+            return URL(fileURLWithPath: launcher)
+                .appendingPathComponent(defaultFolderName(for: repo, in: config.repos), isDirectory: true).path
+        }
+        return Paths.results.appendingPathComponent(repo.id.uuidString, isDirectory: true).path
+    }
+
+    public static func folder(for repo: RepoConfig, config: AppConfig) -> String {
+        if let custom = repo.resultsFolder, !custom.isEmpty { return custom }
+        return defaultFolder(for: repo, config: config)
     }
 }
 

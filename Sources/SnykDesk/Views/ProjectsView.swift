@@ -104,6 +104,8 @@ struct ProjectDetail: View {
             }
             .toggleStyle(.checkbox)
 
+            ResultsFolderRow(repo: repo)
+
             if let scan = model.activeScan, scan.repoIds.contains(repo.id) {
                 ScanProgressView(scan: scan)
             }

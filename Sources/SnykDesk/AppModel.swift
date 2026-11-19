@@ -87,6 +87,7 @@ final class AppModel: ObservableObject {
         let before = LauncherGenerator.status(in: path)
         config.launcherFolder = path
         if before != .foreign { writeLauncher() }
+        reloadRuns()
         return before
     }
 
@@ -231,12 +232,48 @@ final class AppModel: ObservableObject {
 
     func repo(_ id: UUID) -> RepoConfig? { config.repos.first { $0.id == id } }
 
+    // MARK: Results folders
+
+    func resultsFolder(for repo: RepoConfig) -> String {
+        ResultsLocation.folder(for: repo, config: config)
+    }
+
+    func defaultResultsFolder(for repo: RepoConfig) -> String {
+        ResultsLocation.defaultFolder(for: repo, config: config)
+    }
+
+    func chooseResultsFolder(for id: UUID) {
+        guard let index = config.repos.firstIndex(where: { $0.id == id }) else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Use this folder"
+        panel.message = "Choose where to keep the scans of \(config.repos[index].name)."
+        panel.directoryURL = URL(fileURLWithPath: resultsFolder(for: config.repos[index]))
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        config.repos[index].resultsFolder = url.path
+        reloadRuns()
+    }
+
+    func resetResultsFolder(for id: UUID) {
+        guard let index = config.repos.firstIndex(where: { $0.id == id }) else { return }
+        config.repos[index].resultsFolder = nil
+        reloadRuns()
+    }
+
+    func revealResults(for repo: RepoConfig) {
+        let url = URL(fileURLWithPath: resultsFolder(for: repo), isDirectory: true)
+        Paths.ensure(url)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
     // MARK: Results
 
     func reloadRuns() {
         var all: [UUID: [ScanRun]] = [:]
         for repo in config.repos {
-            all[repo.id] = ResultParser.loadRuns(repoId: repo.id)
+            all[repo.id] = ResultParser.loadRuns(repo: repo, config: config)
         }
         runs = all
     }
@@ -316,8 +353,8 @@ final class AppModel: ObservableObject {
             case "::step":
                 scan.step = parts.count > 1 ? stepLabel(parts[1]) : scan.step
             case "::done":
-                if parts.count > 1, let id = UUID(uuidString: parts[1]) {
-                    runs[id] = ResultParser.loadRuns(repoId: id)
+                if parts.count > 1, let id = UUID(uuidString: parts[1]), let repo = repo(id) {
+                    runs[id] = ResultParser.loadRuns(repo: repo, config: config)
                 }
             default:
                 break

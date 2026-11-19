@@ -97,7 +97,7 @@ struct LauncherStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Where should the scan launcher live?").font(.title2.bold())
-            Text("The launcher is a small script, \(Paths.launcherName), that runs the Snyk CLI for each repository. The app and the schedule both use it, and you can run it from Terminal too.")
+            Text("The launcher is a small script, \(Paths.launcherName), that runs the Snyk CLI for each repository. The app and the schedule both use it, and you can run it from Terminal too. Scans are saved next to it, in one subfolder per repository, unless you pick another folder for a repository later.")
                 .foregroundStyle(.secondary)
             Button("Choose folder…") { found = model.chooseLauncherFolder() }
                 .buttonStyle(.borderedProminent)

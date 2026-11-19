@@ -147,3 +147,33 @@ struct UsageView: View {
         }
     }
 }
+
+struct ResultsFolderRow: View {
+    @EnvironmentObject private var model: AppModel
+    let repo: RepoConfig
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "tray.full").foregroundStyle(.secondary)
+                Text("Scans go to").font(.caption).foregroundStyle(.secondary)
+                Text(model.resultsFolder(for: repo))
+                    .font(.system(.caption, design: .monospaced))
+                    .lineLimit(1).truncationMode(.middle)
+                    .textSelection(.enabled)
+                Text(repo.resultsFolder == nil ? "(default)" : "(custom)")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 12) {
+                Button("Choose folder…") { model.chooseResultsFolder(for: repo.id) }
+                if repo.resultsFolder != nil {
+                    Button("Use default") { model.resetResultsFolder(for: repo.id) }
+                        .help(model.defaultResultsFolder(for: repo))
+                }
+                Button("Show in Finder") { model.revealResults(for: repo) }
+            }
+            .buttonStyle(.link)
+            .font(.caption)
+        }
+    }
+}

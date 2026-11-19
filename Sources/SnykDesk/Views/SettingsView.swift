@@ -42,7 +42,7 @@ struct SettingsView: View {
             }
 
             Section("Results") {
-                Text("Scan results are kept in ~/Library/Application Support/SnykDesk/results, one folder per repository and scan.")
+                Text("By default each repository's scans go to a subfolder next to the launcher, one folder per scan. You can pick another folder for any repository above.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("Run setup again") { model.restartOnboarding() }
             }
@@ -55,7 +55,7 @@ struct SettingsView: View {
                 pendingRemoval = nil
             }
         } message: {
-            Text("The folder and its past results stay on disk. It is only removed from Snyk Desk.")
+            Text("The repository and its scan folders stay on disk. It is only removed from Snyk Desk.")
         }
     }
 }
@@ -87,6 +87,7 @@ struct RepoSettingsRow: View {
             }
             .toggleStyle(.checkbox)
             .font(.caption)
+            ResultsFolderRow(repo: repo)
         }
         .padding(.vertical, 4)
     }
