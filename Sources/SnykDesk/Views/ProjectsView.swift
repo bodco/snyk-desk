@@ -124,6 +124,8 @@ struct ProjectDetail: View {
 
             ResultsFolderRow(repo: repo)
 
+            MissingToolsBanner(repo: repo)
+
             if let scan = model.activeScan, scan.repoIds.contains(repo.id) {
                 ScanProgressView(scan: scan)
             }

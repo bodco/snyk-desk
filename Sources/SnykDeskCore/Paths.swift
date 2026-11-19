@@ -13,6 +13,8 @@ public enum Paths {
     public static var configFile: URL { support.appendingPathComponent("config.json") }
     public static var results: URL { support.appendingPathComponent("results", isDirectory: true) }
     public static var bin: URL { support.appendingPathComponent("bin", isDirectory: true) }
+    /// Build tools (Java, Maven and so on) that the app installed for itself, one folder per tool.
+    public static var tools: URL { support.appendingPathComponent("tools", isDirectory: true) }
     public static var logs: URL { support.appendingPathComponent("logs", isDirectory: true) }
 
     public static let launcherName = "snyk-desk-scan.sh"

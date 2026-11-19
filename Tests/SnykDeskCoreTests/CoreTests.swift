@@ -237,3 +237,147 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(config.schedule, ScheduleConfig())
     }
 }
+
+final class ToolTests: XCTestCase {
+    private func makeFolder(_ files: [String]) throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("tools-\(UUID().uuidString)")
+        for file in files {
+            let url = root.appendingPathComponent(file)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try "x".write(to: url, atomically: true, encoding: .utf8)
+        }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    func testCatalogIsConsistent() {
+        let ids = ToolCatalog.all.map(\.id)
+        XCTAssertEqual(Set(ids).count, ids.count)
+        XCTAssertEqual(Set(ids), Set(ToolID.allCases))
+        for spec in ToolCatalog.all {
+            if case .download(_, let urls) = spec.install {
+                XCTAssertFalse(urls.isEmpty, spec.title)
+                XCTAssertTrue(urls.allSatisfy { $0.hasPrefix("https://") }, spec.title)
+            }
+        }
+    }
+
+    func testMavenProjectNeedsMavenAndJava() throws {
+        let folder = try makeFolder(["pom.xml", "src/Main.java"])
+        XCTAssertEqual(RepoRequirements.needs(path: folder.path), [.maven, .java])
+    }
+
+    func testGradleWrapperMeansNoGradleInstall() throws {
+        let withWrapper = try makeFolder(["build.gradle", "gradlew"])
+        XCTAssertEqual(RepoRequirements.needs(path: withWrapper.path), [.java])
+        let without = try makeFolder(["build.gradle.kts"])
+        XCTAssertEqual(RepoRequirements.needs(path: without.path), [.java, .gradle])
+    }
+
+    func testNodeNeededOnlyWithoutLockFile() throws {
+        let locked = try makeFolder(["package.json", "package-lock.json"])
+        XCTAssertEqual(RepoRequirements.needs(path: locked.path), [])
+        let loose = try makeFolder(["web/package.json"])
+        XCTAssertEqual(RepoRequirements.needs(path: loose.path), [.node])
+    }
+
+    func testGoPythonAndSwift() throws {
+        XCTAssertEqual(RepoRequirements.needs(path: try makeFolder(["go.mod"]).path), [.go])
+        XCTAssertEqual(RepoRequirements.needs(path: try makeFolder(["requirements.txt"]).path), [.commandLineTools])
+        XCTAssertEqual(RepoRequirements.needs(path: try makeFolder(["Package.swift"]).path), [.commandLineTools])
+    }
+
+    func testBuildOutputAndHiddenFoldersAreIgnored() throws {
+        let folder = try makeFolder(["node_modules/dep/pom.xml", "target/pom.xml", ".git/pom.xml", "README.md"])
+        XCTAssertEqual(RepoRequirements.needs(path: folder.path), [])
+    }
+
+    func testOnlyDependencyScansNeedTools() throws {
+        let folder = try makeFolder(["pom.xml"])
+        var repo = RepoConfig(name: "api", path: folder.path)
+        XCTAssertEqual(RepoRequirements.needs(for: [repo])[.maven], ["api"])
+        repo.scanDependencies = false
+        repo.monitor = false
+        XCTAssertTrue(RepoRequirements.needs(for: [repo]).isEmpty)
+    }
+
+    func testManagedToolsAreFoundAndAddedToPath() throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent("support-\(UUID().uuidString)")
+        Paths.rootOverride = support
+        defer { Paths.rootOverride = nil }
+
+        func install(_ relative: String, script: String) throws {
+            let file = support.appendingPathComponent("tools").appendingPathComponent(relative)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try script.write(to: file, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: file.path)
+        }
+        XCTAssertFalse(ToolCatalog.isManagedInstalled(.maven))
+        XCTAssertNil(ToolCatalog.managedJavaHome())
+
+        try install("maven/bin/mvn", script: "#!/bin/sh\necho mvn\n")
+        try install("java/Contents/Home/bin/java", script: "#!/bin/sh\necho 'openjdk version \"21.0.1\"' >&2\n")
+
+        XCTAssertTrue(ToolCatalog.isManagedInstalled(.maven))
+        XCTAssertTrue(ToolCatalog.managedBinDirs().contains(ToolCatalog.managedBin(.maven).path))
+        XCTAssertTrue(Shell.commonDirs.contains(ToolCatalog.managedBin(.maven).path))
+        XCTAssertEqual(ToolCatalog.managedJavaHome(), support.appendingPathComponent("tools/java/Contents/Home").path)
+        XCTAssertEqual(Shell.environment(path: "/usr/bin")["JAVA_HOME"], ToolCatalog.managedJavaHome())
+
+        let maven = ToolDetector.detect(ToolCatalog.spec(.maven), path: "/nonexistent")
+        guard case .found(_, _, let managed) = maven else { return XCTFail("maven not found") }
+        XCTAssertTrue(managed)
+
+        let java = ToolDetector.detect(ToolCatalog.spec(.java), path: "/nonexistent")
+        guard case .found(_, let version, let javaManaged) = java else { return XCTFail("java not found") }
+        XCTAssertTrue(javaManaged)
+        XCTAssertTrue(version.contains("21.0.1"), version)
+
+        XCTAssertEqual(ToolDetector.detect(ToolCatalog.spec(.gradle), path: "/nonexistent"), .missing)
+    }
+
+    func testUnpackMovesSingleTopLevelFolder() throws {
+        let work = FileManager.default.temporaryDirectory.appendingPathComponent("unpack-\(UUID().uuidString)")
+        let source = work.appendingPathComponent("src/tool-1.0/bin")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try "hi".write(to: source.appendingPathComponent("tool"), atomically: true, encoding: .utf8)
+        let archive = work.appendingPathComponent("tool.tar.gz")
+        let made = Shell.run("/usr/bin/tar", ["-czf", archive.path, "-C", work.appendingPathComponent("src").path, "tool-1.0"])
+        XCTAssertEqual(made.status, 0, made.output)
+
+        let destination = work.appendingPathComponent("tools/tool")
+        try ToolUnpacker.unpack(archive: archive, kind: .tarGz, into: destination)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent("bin/tool").path))
+        // Installing again replaces the old copy.
+        try ToolUnpacker.unpack(archive: archive, kind: .tarGz, into: destination)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destination.appendingPathComponent("bin/tool").path))
+    }
+
+    func testUnpackRejectsOddLayout() throws {
+        let work = FileManager.default.temporaryDirectory.appendingPathComponent("odd-\(UUID().uuidString)")
+        let source = work.appendingPathComponent("src")
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try "a".write(to: source.appendingPathComponent("a"), atomically: true, encoding: .utf8)
+        try "b".write(to: source.appendingPathComponent("b"), atomically: true, encoding: .utf8)
+        let archive = work.appendingPathComponent("odd.tar.gz")
+        _ = Shell.run("/usr/bin/tar", ["-czf", archive.path, "-C", source.path, "a", "b"])
+        XCTAssertThrowsError(try ToolUnpacker.unpack(archive: archive, kind: .tarGz,
+                                                     into: work.appendingPathComponent("tools/odd")))
+    }
+
+    func testLauncherCarriesJavaHomeAndPreflight() throws {
+        var config = AppConfig()
+        config.repos = [RepoConfig(name: "api", path: "/tmp/api")]
+        let text = LauncherGenerator.script(config: config, snykPath: "/usr/local/bin/snyk",
+                                            pathEnv: "/usr/bin:/bin", javaHome: "/Apps/jdk home")
+        XCTAssertTrue(text.contains("export JAVA_HOME='/Apps/jdk home'"))
+        XCTAssertTrue(text.contains("Open Snyk Desk, Settings, Tools"))
+        XCTAssertTrue(text.contains("skip_step"))
+        let plain = LauncherGenerator.script(config: config, snykPath: "snyk", pathEnv: "/usr/bin")
+        XCTAssertFalse(plain.contains("export JAVA_HOME"))
+
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).sh")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertEqual(Shell.run("/bin/bash", ["-n", file.path]).status, 0)
+    }
+}

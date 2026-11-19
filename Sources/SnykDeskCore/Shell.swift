@@ -28,7 +28,8 @@ public enum Shell {
     public static var commonDirs: [String] {
         let home = Paths.home.path
         return [
-            Paths.bin.path,
+            Paths.bin.path
+        ] + ToolCatalog.managedBinDirs() + [
             "\(home)/.npm-global/bin",
             "\(home)/.homebrew/bin",
             "\(home)/.local/bin",
@@ -71,6 +72,7 @@ public enum Shell {
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = path
         if env["HOME"] == nil { env["HOME"] = Paths.home.path }
+        if let javaHome = ToolCatalog.managedJavaHome() { env["JAVA_HOME"] = javaHome }
         return env
     }
 }
