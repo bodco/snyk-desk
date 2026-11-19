@@ -336,7 +336,32 @@ final class AppModel: ObservableObject {
         runs = all
     }
 
-    func latestRun(_ id: UUID) -> ScanRun? { runs[id]?.first }
+    /// The newest scan with ignored vulnerabilities taken out, so every count in the app agrees with the list.
+    func latestRun(_ id: UUID) -> ScanRun? { runs[id]?.first?.withoutIgnored(config.ignores) }
+
+    // MARK: Ignores
+
+    func ignore(_ finding: Finding, repoId: UUID, reason: IgnoreReason, comment: String, days: Int?) {
+        let expires = days.flatMap { Calendar.current.date(byAdding: .day, value: $0, to: Date()) }
+        config.ignores.removeAll { $0.repoId == repoId && $0.key == finding.ignoreKey }
+        config.ignores.append(IgnoreRule(key: finding.ignoreKey, repoId: repoId, title: finding.title,
+                                         severity: finding.severity, location: finding.location,
+                                         reason: reason, comment: comment, expires: expires))
+        AppLog.write("ignored \(finding.issueId) at \(finding.location): \(reason.rawValue)")
+    }
+
+    func unignore(_ rule: IgnoreRule) {
+        config.ignores.removeAll { $0.id == rule.id }
+        AppLog.write("un-ignored \(rule.key)")
+    }
+
+    func calibrateUsage(openSourceUsed: Int, codeUsed: Int, openSourceLimit: Int, codeLimit: Int) {
+        config.usage.openSourceLimit = max(openSourceLimit, 1)
+        config.usage.codeLimit = max(codeLimit, 1)
+        config.usage.calibration = UsageCalibration(openSourceUsed: max(openSourceUsed, 0), codeUsed: max(codeUsed, 0))
+    }
+
+    func clearUsageCalibration() { config.usage.calibration = nil }
 
     var totalCounts: SeverityCounts {
         config.repos.compactMap { latestRun($0.id)?.counts }.reduce(SeverityCounts(), +)
@@ -345,7 +370,7 @@ final class AppModel: ObservableObject {
     var hasAnyRun: Bool { config.repos.contains { latestRun($0.id) != nil } }
 
     var usage: MonthlyUsage {
-        UsageCalculator.thisMonth(runs.values.flatMap { $0 })
+        UsageCalculator.thisMonth(runs.values.flatMap { $0 }, settings: config.usage)
     }
 
     // MARK: Scanning

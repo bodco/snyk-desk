@@ -584,4 +584,46 @@ final class ToolTests: XCTestCase {
         XCTAssertTrue(html.contains("<a href=\"https://nvd.nist.gov/vuln/detail/CVE-2024-1\">"))
         XCTAssertTrue(ReportBuilder.markdown(findings: [], run: nil, context: ctx).contains("No vulnerabilities."))
     }
+
+    func testIgnoredFindingsLeaveTheCountsAndComeBackAfterExpiry() {
+        let repo = UUID()
+        let a = Finding(id: "1", kind: .code, severity: .high, title: "XSS", issueId: "js/XSS", location: "a.js:3", detail: "")
+        let b = Finding(id: "2", kind: .dependency, severity: .low, title: "ReDoS", issueId: "SNYK-1", location: "x@1", detail: "")
+        let run = ScanRun(id: "r", repoId: repo, date: Date(), dependencies: .issues, code: .issues, monitor: .skipped,
+                          dependencyProjects: 1, findings: [a, b], notes: [])
+        let now = Date()
+        let forever = IgnoreRule(key: a.ignoreKey, repoId: repo, title: a.title, severity: a.severity, location: a.location,
+                                 reason: .wontFix, comment: "accepted")
+        let expired = IgnoreRule(key: b.ignoreKey, repoId: repo, title: b.title, severity: b.severity, location: b.location,
+                                 reason: .temporary, comment: "", expires: now.addingTimeInterval(-60))
+        let other = IgnoreRule(key: b.ignoreKey, repoId: UUID(), title: b.title, severity: b.severity, location: b.location,
+                               reason: .notVulnerable, comment: "")
+        let split = run.splitIgnored([forever, expired, other], now: now)
+        XCTAssertEqual(split.open.map(\.id), ["2"])
+        XCTAssertEqual(split.ignored.map(\.finding.id), ["1"])
+        XCTAssertEqual(run.withoutIgnored([forever], now: now).counts.total, 1)
+        XCTAssertTrue(forever.isActive(at: now))
+        XCTAssertFalse(expired.isActive(at: now))
+    }
+
+    func testUsageStartsFromSnykNumbersAndCountsLaterScansOnly() {
+        let now = Date()
+        let calendar = Calendar.current
+        func run(_ date: Date, deps: StepStatus, code: StepStatus) -> ScanRun {
+            ScanRun(id: UUID().uuidString, repoId: UUID(), date: date, dependencies: deps, code: code,
+                    monitor: .skipped, dependencyProjects: 2, findings: [], notes: [])
+        }
+        var settings = UsageSettings()
+        settings.openSourceLimit = 200
+        settings.calibration = UsageCalibration(date: now.addingTimeInterval(-3600), openSourceUsed: 50, codeUsed: 10)
+        let usage = UsageCalculator.thisMonth([
+            run(now.addingTimeInterval(-7200), deps: .issues, code: .issues),
+            run(now, deps: .issues, code: .error)
+        ], now: now, calendar: calendar, settings: settings)
+        XCTAssertEqual(usage.openSource, 52)
+        XCTAssertEqual(usage.code, 10)
+        XCTAssertEqual(usage.openSourceLimit, 200)
+        XCTAssertTrue(usage.calibrated)
+        XCTAssertFalse(StepStatus.error.consumedTest)
+    }
 }

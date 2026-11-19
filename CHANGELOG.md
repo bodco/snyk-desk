@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5 - 2026-11-20
+
+- Ignore a vulnerability the way Snyk does: an eye icon on every row opens Not vulnerable, Won't fix or Temporary ignore, with an expiry (30, 60, 90 days or never) and a comment. Ignored items leave the lists, counts, dashboard and reports, show up under the Ignored tab, and come back on Unignore or after the date. Ignores are kept in the app, nothing is written into the repositories.
+- Test limits: the Open Source limit now defaults to 400, as in Snyk's docs, and a step that failed before testing no longer counts. Sync with Snyk lets you copy the used and limit numbers from Snyk's Usage page once; the app then adds the scans it runs on top.
+
 ## 0.2.4 - 2026-11-20
 
 - Report button next to Scan now: a full report of the vulnerabilities shown (filters apply) as PDF, Markdown or HTML, grouped by severity, with every detail the scan has (location, dependency path, CVSS, CWE, CVE, fix, Snyk's explanation) and links for deeper analysis (Snyk database, NVD, CWE).
