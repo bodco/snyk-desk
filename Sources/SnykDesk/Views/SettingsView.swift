@@ -37,6 +37,15 @@ struct SettingsView: View {
                 ToolsPanel()
             }
 
+            Section("Logs") {
+                HStack {
+                    Text("Every scan writes scan.log into its own folder. The app keeps its own log here.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Open app log") { model.openAppLog() }
+                }
+            }
+
             Section("Snyk account") {
                 AuthStatusView()
             }

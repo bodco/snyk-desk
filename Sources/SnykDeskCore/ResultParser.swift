@@ -38,6 +38,7 @@ public enum ResultParser {
                 seen.insert(key)
                 let fixedIn = (vuln["fixedIn"] as? [String]) ?? []
                 let fix = fixedIn.isEmpty ? nil : "Upgrade \(package) to \(fixedIn.joined(separator: ", "))"
+                let cwes = ((vuln["identifiers"] as? [String: Any])?["CWE"] as? [String]) ?? []
                 let path = ((vuln["from"] as? [String]) ?? []).joined(separator: " > ")
                 let location = target.isEmpty ? "\(package)@\(version)" : "\(package)@\(version) in \(target)"
                 findings.append(Finding(
@@ -49,10 +50,33 @@ public enum ResultParser {
                     location: location,
                     detail: path,
                     fix: fix,
-                    url: "https://security.snyk.io/vuln/\(vulnId)"))
+                    url: "https://security.snyk.io/vuln/\(vulnId)",
+                    cwe: cwes.isEmpty ? nil : cwes,
+                    advice: shorten(vuln["description"] as? String)))
             }
         }
         return (sorted(findings), projects.count, errors)
+    }
+
+    /// Link to the MITRE page of a CWE id like "CWE-79". Snyk Code results carry no link of their own.
+    static func cweLink(_ cwe: String?) -> String? {
+        guard let cwe, cwe.uppercased().hasPrefix("CWE-"), let number = Int(cwe.dropFirst(4)) else { return nil }
+        return "https://cwe.mitre.org/data/definitions/\(number).html"
+    }
+
+    /// The "Details" part of a Snyk Code rule help text.
+    static func detailsSection(_ markdown: String) -> String {
+        guard let start = markdown.range(of: "## Details") else { return markdown }
+        let rest = markdown[start.upperBound...]
+        if let end = rest.range(of: "\n## ") { return String(rest[..<end.lowerBound]) }
+        return String(rest)
+    }
+
+    static func shorten(_ text: String?, limit: Int = 900) -> String? {
+        guard let text else { return nil }
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return nil }
+        return cleaned.count > limit ? String(cleaned.prefix(limit)) + "..." : cleaned
     }
 
     /// Parses `snyk code test --sarif-file-output` (SARIF 2.1).
@@ -61,11 +85,17 @@ public enum ResultParser {
         var findings: [Finding] = []
         for run in (object["runs"] as? [[String: Any]]) ?? [] {
             var rules: [String: String] = [:]
+            var ruleCWE: [String: [String]] = [:]
+            var ruleAdvice: [String: String] = [:]
             if let tool = run["tool"] as? [String: Any], let driver = tool["driver"] as? [String: Any] {
                 for rule in (driver["rules"] as? [[String: Any]]) ?? [] {
                     guard let ruleId = rule["id"] as? String else { continue }
                     let short = (rule["shortDescription"] as? [String: Any])?["text"] as? String
                     rules[ruleId] = short ?? (rule["name"] as? String) ?? ruleId
+                    ruleCWE[ruleId] = (rule["properties"] as? [String: Any])?["cwe"] as? [String] ?? []
+                    if let markdown = (rule["help"] as? [String: Any])?["markdown"] as? String {
+                        ruleAdvice[ruleId] = shorten(detailsSection(markdown))
+                    }
                 }
             }
             for result in (run["results"] as? [[String: Any]]) ?? [] {
@@ -92,7 +122,10 @@ public enum ResultParser {
                     title: rules[ruleId] ?? ruleId,
                     issueId: ruleId,
                     location: location,
-                    detail: message))
+                    detail: message,
+                    url: cweLink(ruleCWE[ruleId]?.first),
+                    cwe: (ruleCWE[ruleId]?.isEmpty ?? true) ? nil : ruleCWE[ruleId],
+                    advice: ruleAdvice[ruleId]))
             }
         }
         return sorted(findings)
@@ -115,6 +148,32 @@ public enum ResultParser {
         let rows = text.split(separator: "\n").map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         guard !rows.isEmpty else { return nil }
         return rows.suffix(lines).joined(separator: "\n")
+    }
+
+    /// First Maven `[ERROR]` lines from the `mvn dependency:tree` run the launcher makes after a Snyk Maven failure.
+    static func mavenReason(_ url: URL) -> String? {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let errors = text.split(separator: "\n").map(String.init).filter { $0.contains("[ERROR]") }
+        guard !errors.isEmpty else { return nil }
+        let first = errors.first { $0.contains("Failed to execute") || $0.contains("Could not") || $0.contains("Non-resolvable") } ?? errors[0]
+        return String(first.prefix(400))
+    }
+
+    /// A plain next step for the Snyk errors that show up most.
+    public static func hint(forLog text: String) -> String? {
+        if text.contains("SNYK-OS-MAVEN-0018") {
+            return "Hint: Maven could not resolve the dependencies. Usual causes: a private repository (check ~/.m2/settings.xml), a Java version the project does not build with, or a module that does not compile. maven.log in the scan folder has Maven's own error."
+        }
+        if text.contains("SNYK-CLI-0008") || text.contains("Could not detect supported target files") {
+            return "Hint: Snyk found no supported manifest here. For Python it needs requirements.txt, Pipfile or poetry.lock (uv.lock needs a recent Snyk CLI). If this repository has nothing Snyk understands, turn off Dependencies and Monitor for it."
+        }
+        if text.contains("SNYK-CLI-0000") && text.contains("exit code: -2") {
+            return "Hint: a tool Snyk needs is missing. Open Settings, Tools."
+        }
+        if text.contains("SNYK-0005") || text.contains("Authentication") {
+            return "Hint: Snyk is not signed in. Open Settings and sign in again."
+        }
+        return nil
     }
 
     /// Loads one scan folder: `results/<repo-id>/<timestamp>/`.
@@ -148,9 +207,21 @@ public enum ResultParser {
             if let lastLines = tail(directory.appendingPathComponent("\(step).log")) {
                 notes.append("\(step): \(lastLines)")
             }
+            if let text = try? String(contentsOf: directory.appendingPathComponent("\(step).log"), encoding: .utf8),
+               let hint = hint(forLog: text) {
+                notes.append(hint)
+            }
+        }
+        if let maven = mavenReason(directory.appendingPathComponent("maven.log")) {
+            notes.append("maven: \(maven)")
+        }
+        for step in ["deps", "code", "monitor"] {
+            if let text = try? String(contentsOf: directory.appendingPathComponent("\(step).note"), encoding: .utf8) {
+                notes.append("\(step): \(text.trimmingCharacters(in: .whitespacesAndNewlines))")
+            }
         }
         return ScanRun(id: name, repoId: repoId, date: date, dependencies: deps, code: code, monitor: monitor,
-                       dependencyProjects: projects, findings: sorted(findings), notes: notes)
+                       dependencyProjects: projects, findings: sorted(findings), notes: notes, directory: directory)
     }
 
     /// All scans in one results folder: one subfolder per scan, named by its timestamp.

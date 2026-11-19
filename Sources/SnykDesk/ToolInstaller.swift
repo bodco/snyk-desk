@@ -169,8 +169,10 @@ extension AppModel {
                 throw DeskError("\(spec.title) was unpacked, but \(spec.command) was not found inside it.")
             }
             toolInstall?.fraction = 1
+            AppLog.write("tool installed: \(spec.title)")
         } catch {
             toolErrors[id] = error.localizedDescription
+            AppLog.write("tool install failed: \(spec.title): \(error.localizedDescription)")
         }
     }
 
@@ -179,6 +181,7 @@ extension AppModel {
         guard !waitingForCommandLineTools else { return }
         waitingForCommandLineTools = true
         toolErrors[.commandLineTools] = nil
+        AppLog.write("tool install: asked macOS to install the Command Line Tools")
         Task.detached { _ = Shell.run("/usr/bin/xcode-select", ["--install"]) }
         Task {
             let spec = ToolCatalog.spec(.commandLineTools)

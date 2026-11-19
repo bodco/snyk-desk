@@ -380,4 +380,107 @@ final class ToolTests: XCTestCase {
         try text.write(to: file, atomically: true, encoding: .utf8)
         XCTAssertEqual(Shell.run("/bin/bash", ["-n", file.path]).status, 0)
     }
+
+    func testHintsForCommonSnykErrors() {
+        XCTAssertTrue(ResultParser.hint(forLog: "ERROR Cannot build Maven dependency tree (SNYK-OS-MAVEN-0018)")?.contains("maven.log") == true)
+        XCTAssertTrue(ResultParser.hint(forLog: "FATAL No supported files found (SNYK-CLI-0008)")?.contains("manifest") == true)
+        XCTAssertTrue(ResultParser.hint(forLog: "SNYK-CLI-0000 Child process failed with exit code: -2")?.contains("Tools") == true)
+        XCTAssertNil(ResultParser.hint(forLog: "all good"))
+    }
+
+    func testRunFolderShowsMavenReasonAndPartialMonitorNote() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try "SNYK-OS-MAVEN-0018".write(to: dir.appendingPathComponent("deps.log"), atomically: true, encoding: .utf8)
+        try "2".write(to: dir.appendingPathComponent("deps.exit"), atomically: true, encoding: .utf8)
+        try "[INFO] x\n[ERROR] Could not transfer artifact foo from private-repo\n".write(
+            to: dir.appendingPathComponent("maven.log"), atomically: true, encoding: .utf8)
+        try "Some sub-projects could not be monitored.".write(
+            to: dir.appendingPathComponent("monitor.note"), atomically: true, encoding: .utf8)
+        let run = ResultParser.loadRun(directory: dir, repoId: UUID())
+        XCTAssertEqual(run.directory, dir)
+        XCTAssertTrue(run.notes.contains { $0.hasPrefix("maven: [ERROR] Could not transfer") })
+        XCTAssertTrue(run.notes.contains { $0.hasPrefix("Hint: Maven") })
+        XCTAssertTrue(run.notes.contains { $0.hasPrefix("monitor: Some sub-projects") })
+    }
+
+    func testLauncherWritesScanLogAndTreatsPartialMonitorAsDone() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let repo = root.appendingPathComponent("repo")
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        let fake = root.appendingPathComponent("snyk")
+        try """
+        #!/bin/bash
+        if [ "$1" = "--version" ]; then echo 9.9.9; exit 0; fi
+        if [ "$1" = "monitor" ]; then echo "Explore this snapshot at x"; echo "Something went wrong"; exit 2; fi
+        exit 0
+        """.write(to: fake, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+        var config = AppConfig()
+        config.launcherFolder = root.path
+        let item = RepoConfig(name: "demo", path: repo.path, scanCode: false)
+        config.repos = [item]
+        let launcher = try LauncherGenerator.install(config: config, folder: root.path, snykPath: fake.path,
+                                                     pathEnv: "/usr/bin:/bin")
+        let result = Shell.run("/bin/bash", [launcher.path, item.id.uuidString])
+        XCTAssertEqual(result.status, 0, result.output)
+        let results = URL(fileURLWithPath: ResultsLocation.folder(for: item, config: config))
+        let scanDir = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: results, includingPropertiesForKeys: nil).first)
+        let log = try String(contentsOf: scanDir.appendingPathComponent("scan.log"), encoding: .utf8)
+        XCTAssertTrue(log.contains("snyk: 9.9.9"))
+        XCTAssertTrue(log.contains("monitor: partial success"))
+        XCTAssertEqual(ResultParser.exitCode(scanDir, "monitor"), 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: scanDir.appendingPathComponent("monitor.note").path))
+    }
+
+    func testAppLogWritesAndRotates() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        Paths.rootOverride = root
+        defer { Paths.rootOverride = nil }
+        AppLog.write("hello")
+        XCTAssertTrue(try String(contentsOf: AppLog.file, encoding: .utf8).contains("hello"))
+        try String(repeating: "x", count: AppLog.maxBytes + 10).write(to: AppLog.file, atomically: true, encoding: .utf8)
+        AppLog.write("after")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: Paths.logs.appendingPathComponent("snyk-desk.old.log").path))
+        XCTAssertTrue(try String(contentsOf: AppLog.file, encoding: .utf8).contains("after"))
+    }
+
+    func testCodeFindingsGetCweLinkAndAdvice() throws {
+        let sarif = """
+        {"runs":[{"tool":{"driver":{"rules":[{"id":"python/XSS","shortDescription":{"text":"Cross-site Scripting (XSS)"},
+        "help":{"markdown":"\\n## Details\\n\\nUnsanitized input is rendered.\\n\\n## Best practices\\n* x"},
+        "properties":{"cwe":["CWE-79"]}}]}},
+        "results":[{"ruleId":"python/XSS","level":"error","message":{"text":"Unsanitized input"},
+        "locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.py"},"region":{"startLine":3}}}]}]}]}
+        """
+        let found = ResultParser.parseCode(Data(sarif.utf8))
+        XCTAssertEqual(found.count, 1)
+        XCTAssertEqual(found[0].url, "https://cwe.mitre.org/data/definitions/79.html")
+        XCTAssertEqual(found[0].cwe, ["CWE-79"])
+        XCTAssertEqual(found[0].advice, "Unsanitized input is rendered.")
+    }
+
+    func testPromptsCarryRepoFilterAndFindings() {
+        let a = Finding(id: "1", kind: .code, severity: .high, title: "XSS", issueId: "python/XSS",
+                        location: "a.py:3", detail: "bad", url: "https://x")
+        let b = Finding(id: "2", kind: .dependency, severity: .critical, title: "RCE", issueId: "SNYK-1",
+                        location: "lib@1", detail: "app > lib", fix: "Upgrade lib to 2")
+        let text = PromptBuilder.repoPrompt(findings: [a, b], repo: "server", project: "Acme", path: "/code/server",
+                                            filter: "High і вище", scanDate: "today")
+        XCTAssertTrue(text.contains("/code/server"))
+        XCTAssertTrue(text.contains("High і вище"))
+        XCTAssertTrue(text.contains("Critical 1, High 1"))
+        XCTAssertTrue(text.range(of: "RCE")!.lowerBound < text.range(of: "XSS")!.lowerBound)
+        let single = PromptBuilder.singlePrompt(a, repo: "server", project: "Acme", path: "/code/server")
+        XCTAssertTrue(single.contains("a.py:3"))
+        XCTAssertTrue(single.contains("Link: https://x"))
+    }
+
+    func testLongPromptListsTheRestByTitle() {
+        let many = (0..<(PromptBuilder.fullLimit + 5)).map {
+            Finding(id: "\($0)", kind: .code, severity: .low, title: "T\($0)", issueId: "r", location: "f:\($0)", detail: "")
+        }
+        let text = PromptBuilder.repoPrompt(findings: many, repo: "r", project: "p", path: "/p", filter: "f", scanDate: "d")
+        XCTAssertTrue(text.contains("Ще 5 без деталей"))
+    }
 }

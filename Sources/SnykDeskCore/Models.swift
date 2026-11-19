@@ -84,9 +84,14 @@ public struct Finding: Codable, Identifiable, Hashable, Sendable {
     public var detail: String
     public var fix: String?
     public var url: String?
+    /// CWE ids such as "CWE-79".
+    public var cwe: [String]?
+    /// Snyk's own explanation of the problem, shortened.
+    public var advice: String?
 
     public init(id: String, kind: FindingKind, severity: Severity, title: String, issueId: String,
-                location: String, detail: String, fix: String? = nil, url: String? = nil) {
+                location: String, detail: String, fix: String? = nil, url: String? = nil,
+                cwe: [String]? = nil, advice: String? = nil) {
         self.id = id
         self.kind = kind
         self.severity = severity
@@ -96,6 +101,8 @@ public struct Finding: Codable, Identifiable, Hashable, Sendable {
         self.detail = detail
         self.fix = fix
         self.url = url
+        self.cwe = cwe
+        self.advice = advice
     }
 }
 
@@ -140,9 +147,12 @@ public struct ScanRun: Identifiable, Equatable, Sendable {
     public var dependencyProjects: Int
     public var findings: [Finding]
     public var notes: [String]
+    /// The scan folder, so the UI can open the logs. Nil for runs built in memory.
+    public var directory: URL?
 
     public init(id: String, repoId: UUID, date: Date, dependencies: StepStatus, code: StepStatus,
-                monitor: StepStatus, dependencyProjects: Int, findings: [Finding], notes: [String]) {
+                monitor: StepStatus, dependencyProjects: Int, findings: [Finding], notes: [String],
+                directory: URL? = nil) {
         self.id = id
         self.repoId = repoId
         self.date = date
@@ -152,6 +162,7 @@ public struct ScanRun: Identifiable, Equatable, Sendable {
         self.dependencyProjects = dependencyProjects
         self.findings = findings
         self.notes = notes
+        self.directory = directory
     }
 
     public var counts: SeverityCounts { SeverityCounts.of(findings) }
