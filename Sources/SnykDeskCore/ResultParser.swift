@@ -117,6 +117,32 @@ public enum ResultParser {
         return rows.suffix(lines).joined(separator: "\n")
     }
 
+    /// First Maven `[ERROR]` lines from the `mvn dependency:tree` run the launcher makes after a Snyk Maven failure.
+    static func mavenReason(_ url: URL) -> String? {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let errors = text.split(separator: "\n").map(String.init).filter { $0.contains("[ERROR]") }
+        guard !errors.isEmpty else { return nil }
+        let first = errors.first { $0.contains("Failed to execute") || $0.contains("Could not") || $0.contains("Non-resolvable") } ?? errors[0]
+        return String(first.prefix(400))
+    }
+
+    /// A plain next step for the Snyk errors that show up most.
+    public static func hint(forLog text: String) -> String? {
+        if text.contains("SNYK-OS-MAVEN-0018") {
+            return "Hint: Maven could not resolve the dependencies. Usual causes: a private repository (check ~/.m2/settings.xml), a Java version the project does not build with, or a module that does not compile. maven.log in the scan folder has Maven's own error."
+        }
+        if text.contains("SNYK-CLI-0008") || text.contains("Could not detect supported target files") {
+            return "Hint: Snyk found no supported manifest here. For Python it needs requirements.txt, Pipfile or poetry.lock (uv.lock needs a recent Snyk CLI). If this repository has nothing Snyk understands, turn off Dependencies and Monitor for it."
+        }
+        if text.contains("SNYK-CLI-0000") && text.contains("exit code: -2") {
+            return "Hint: a tool Snyk needs is missing. Open Settings, Tools."
+        }
+        if text.contains("SNYK-0005") || text.contains("Authentication") {
+            return "Hint: Snyk is not signed in. Open Settings and sign in again."
+        }
+        return nil
+    }
+
     /// Loads one scan folder: `results/<repo-id>/<timestamp>/`.
     public static func loadRun(directory: URL, repoId: UUID) -> ScanRun {
         let name = directory.lastPathComponent
@@ -148,9 +174,21 @@ public enum ResultParser {
             if let lastLines = tail(directory.appendingPathComponent("\(step).log")) {
                 notes.append("\(step): \(lastLines)")
             }
+            if let text = try? String(contentsOf: directory.appendingPathComponent("\(step).log"), encoding: .utf8),
+               let hint = hint(forLog: text) {
+                notes.append(hint)
+            }
+        }
+        if let maven = mavenReason(directory.appendingPathComponent("maven.log")) {
+            notes.append("maven: \(maven)")
+        }
+        for step in ["deps", "code", "monitor"] {
+            if let text = try? String(contentsOf: directory.appendingPathComponent("\(step).note"), encoding: .utf8) {
+                notes.append("\(step): \(text.trimmingCharacters(in: .whitespacesAndNewlines))")
+            }
         }
         return ScanRun(id: name, repoId: repoId, date: date, dependencies: deps, code: code, monitor: monitor,
-                       dependencyProjects: projects, findings: sorted(findings), notes: notes)
+                       dependencyProjects: projects, findings: sorted(findings), notes: notes, directory: directory)
     }
 
     /// All scans in one results folder: one subfolder per scan, named by its timestamp.

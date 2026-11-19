@@ -86,6 +86,7 @@ final class AppModel: ObservableObject {
                                           javaHome: ToolCatalog.managedJavaHome())
         } catch {
             lastError = "Could not write the launcher: \(error.localizedDescription)"
+            AppLog.write("launcher write failed: \(error.localizedDescription)")
         }
     }
 
@@ -332,6 +333,7 @@ final class AppModel: ObservableObject {
             return
         }
         activeScan = ActiveScan(repoIds: ids, currentRepo: nil, step: "Starting", log: [])
+        AppLog.write("scan started: \(ids.count) repo(s), launcher \(launcher.path)")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -349,6 +351,7 @@ final class AppModel: ObservableObject {
         process.terminationHandler = { [weak self] _ in
             pipe.fileHandleForReading.readabilityHandler = nil
             Task { @MainActor in
+                AppLog.write("scan finished")
                 self?.activeScan = nil
                 self?.scanProcess = nil
                 self?.reloadRuns()
@@ -360,6 +363,23 @@ final class AppModel: ObservableObject {
         } catch {
             activeScan = nil
             lastError = "Could not start the scan: \(error.localizedDescription)"
+            AppLog.write("scan could not start: \(error.localizedDescription)")
+        }
+    }
+
+    func openAppLog() {
+        Paths.ensure(Paths.logs)
+        if !FileManager.default.fileExists(atPath: AppLog.file.path) { AppLog.write("log opened") }
+        NSWorkspace.shared.open(AppLog.file)
+    }
+
+    func openScanFile(_ run: ScanRun, _ name: String) {
+        guard let dir = run.directory else { return }
+        let file = dir.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: file.path) {
+            NSWorkspace.shared.open(file)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([dir])
         }
     }
 
@@ -372,6 +392,7 @@ final class AppModel: ObservableObject {
         for raw in text.split(separator: "\n") {
             let line = String(raw)
             scan.log.append(line)
+            AppLog.write("launcher: \(line)")
             let parts = line.split(separator: " ").map(String.init)
             guard let head = parts.first else { continue }
             switch head {

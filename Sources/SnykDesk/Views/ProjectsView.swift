@@ -176,6 +176,7 @@ struct ProjectDetail: View {
 
 struct RunSummary: View {
     let run: ScanRun
+    @EnvironmentObject var model: AppModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -190,8 +191,18 @@ struct RunSummary: View {
                 Label(note, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
-                    .lineLimit(4)
+                    .lineLimit(8)
                     .textSelection(.enabled)
+            }
+            if run.directory != nil {
+                HStack(spacing: 12) {
+                    Button("Open scan log") { model.openScanFile(run, "scan.log") }
+                    if run.dependencies == .error { Button("Open dependencies log") { model.openScanFile(run, "deps.log") } }
+                    if run.monitor == .error { Button("Open monitor log") { model.openScanFile(run, "monitor.log") } }
+                    Button("Show scan folder") { model.openScanFile(run, "") }
+                }
+                .buttonStyle(.link)
+                .font(.caption)
             }
         }
     }

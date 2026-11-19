@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2 - 2026-11-20
+
+- Logging: every scan folder now has a `scan.log` with the Snyk version, PATH, `JAVA_HOME`, the versions of java, mvn, node, go and uv, the commands that ran, exit codes and durations. The app keeps its own log in `~/Library/Application Support/SnykDesk/logs/snyk-desk.log` (scans, launcher, tool installs, rotated at 1 MB).
+- A failed Maven dependency scan now also runs `mvn dependency:tree` and saves Maven's own error to `maven.log`, because Snyk only says "Cannot build Maven dependency tree". The first Maven error is shown on the repository page.
+- Plain hints for the common Snyk errors (Maven 0018, no supported files, missing tool, not signed in).
+- A monitor run where the main project was monitored but some sub-project failed is now shown as done with a note, not as an error.
+- The repository page has "Open scan log", "Open dependencies log", "Open monitor log" and "Show scan folder" buttons, and Settings has "Open app log". The launcher is now v4.
+
 ## 0.2.1 - 2026-11-19
 
 - Build tools: setup has a new "Tools" step, and Settings has a "Tools" section. The app reads your repositories, lists which of Java, Maven, Gradle, Node.js, Go and the Xcode Command Line Tools they need, and installs the missing ones with a progress bar. No Terminal, no Homebrew, no admin password: tools are downloaded from the official sites into the app's own folder. Tools you already have are used as they are, and the ones the app installed can be removed.

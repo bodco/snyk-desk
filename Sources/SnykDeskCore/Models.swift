@@ -140,9 +140,12 @@ public struct ScanRun: Identifiable, Equatable, Sendable {
     public var dependencyProjects: Int
     public var findings: [Finding]
     public var notes: [String]
+    /// The scan folder, so the UI can open the logs. Nil for runs built in memory.
+    public var directory: URL?
 
     public init(id: String, repoId: UUID, date: Date, dependencies: StepStatus, code: StepStatus,
-                monitor: StepStatus, dependencyProjects: Int, findings: [Finding], notes: [String]) {
+                monitor: StepStatus, dependencyProjects: Int, findings: [Finding], notes: [String],
+                directory: URL? = nil) {
         self.id = id
         self.repoId = repoId
         self.date = date
@@ -152,6 +155,7 @@ public struct ScanRun: Identifiable, Equatable, Sendable {
         self.dependencyProjects = dependencyProjects
         self.findings = findings
         self.notes = notes
+        self.directory = directory
     }
 
     public var counts: SeverityCounts { SeverityCounts.of(findings) }
