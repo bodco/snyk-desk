@@ -33,6 +33,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var runs: [UUID: [ScanRun]] = [:]
     @Published private(set) var cli: CLIState = .checking
     @Published private(set) var auth: AuthState = .unknown
+    /// The organization the CLI tests under (`snyk config get org`); empty means the account's default.
+    @Published private(set) var snykOrg = ""
     @Published private(set) var installProgress: Double?
     @Published private(set) var installError: String?
     @Published private(set) var activeScan: ActiveScan?
@@ -203,6 +205,12 @@ final class AppModel: ObservableObject {
         let user = result.output.split(separator: "\n").last.map(String.init)?
             .trimmingCharacters(in: .whitespaces) ?? ""
         auth = (result.status == 0 && !user.isEmpty) ? .loggedIn(user) : .loggedOut
+        if case .loggedIn = auth {
+            let org = await Task.detached { Shell.run(snyk, ["config", "get", "org"], environment: env) }.value
+            snykOrg = org.status == 0 ? org.output.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        } else {
+            snykOrg = ""
+        }
     }
 
     func login() {

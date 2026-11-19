@@ -239,6 +239,12 @@ struct AuthStatusView: View {
             case .loggedIn(let user):
                 Label("Logged in as \(user)", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
+                Text("Organization: \(model.snykOrg.isEmpty ? "the account's default" : model.snykOrg)")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Test limits used here: Open Source \(model.config.usage.openSourceLimit), Code \(model.config.usage.codeLimit) a month\(model.config.usage.calibration == nil ? " (Snyk's Free plan figures; use Sync with Snyk under This month to set yours)" : " (from your Sync with Snyk numbers)"). Private repositories count against them, public ones do not.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Snyk's API does not return the plan or the limits. It can return your email and organizations, but that needs the CLI's token, which this app does not read.")
+                    .font(.caption).foregroundStyle(.secondary)
             case .loggedOut:
                 Label("Not logged in", systemImage: "person.crop.circle.badge.xmark")
                     .foregroundStyle(.secondary)
