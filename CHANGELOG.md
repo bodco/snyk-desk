@@ -2,6 +2,7 @@
 
 ## 0.2.3 - 2026-11-20
 
+- The release zip now also holds a short "Read me first" with the first-launch steps (EN and UK), like the Pacenote DMG.
 - Results are kept locally for good: every finished scan also gets `report.md` (readable, pasteable into Claude) and `summary.json` in its own folder, next to the raw Snyk files. Older scans get them too the next time the app opens. Scan folders are never deleted or overwritten by the app, so logging out, switching Snyk account or removing a repository from the list does not lose any results.
 - Snyk account: "Log out" and "Switch account" in Settings. Switch account logs the CLI out and opens the browser login, so you can scan the same repositories with another Snyk account.
 - No more "Apple could not verify" on every reinstall. That warning appears for any app downloaded in a browser that is not notarized (notarization needs a paid Apple Developer ID). Two ways around it: `scripts/install.sh` (one `curl` command; curl downloads are not quarantined) and an in-app updater (Settings > Updates, plus a dashboard banner) that downloads the new release itself, swaps the app after it quits and starts it again. The "Check for updates" button sits at the bottom of the sidebar and in the app menu, and becomes "Install <version> and restart" when a new release exists.
