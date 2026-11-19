@@ -161,6 +161,8 @@ public struct RepoConfig: Codable, Identifiable, Hashable, Sendable {
     public var id: UUID
     public var name: String
     public var path: String
+    /// Project the repository belongs to; one project can hold several repositories.
+    public var project: String
     public var scanDependencies: Bool
     public var scanCode: Bool
     public var monitor: Bool
@@ -168,12 +170,13 @@ public struct RepoConfig: Codable, Identifiable, Hashable, Sendable {
     /// Where this repository's scans go. nil means the default: a subfolder next to the launcher.
     public var resultsFolder: String?
 
-    public init(id: UUID = UUID(), name: String, path: String, scanDependencies: Bool = true,
-                scanCode: Bool = true, monitor: Bool = true, scheduled: Bool = true,
-                resultsFolder: String? = nil) {
+    public init(id: UUID = UUID(), name: String, path: String, project: String? = nil,
+                scanDependencies: Bool = true, scanCode: Bool = true, monitor: Bool = true,
+                scheduled: Bool = true, resultsFolder: String? = nil) {
         self.id = id
         self.name = name
         self.path = path
+        self.project = project ?? ProjectInference.guess(path: path)
         self.scanDependencies = scanDependencies
         self.scanCode = scanCode
         self.monitor = monitor
@@ -186,11 +189,29 @@ public struct RepoConfig: Codable, Identifiable, Hashable, Sendable {
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? "Repository"
         path = try c.decodeIfPresent(String.self, forKey: .path) ?? ""
+        project = try c.decodeIfPresent(String.self, forKey: .project) ?? ProjectInference.guess(path: path)
         scanDependencies = try c.decodeIfPresent(Bool.self, forKey: .scanDependencies) ?? true
         scanCode = try c.decodeIfPresent(Bool.self, forKey: .scanCode) ?? true
         monitor = try c.decodeIfPresent(Bool.self, forKey: .monitor) ?? true
         scheduled = try c.decodeIfPresent(Bool.self, forKey: .scheduled) ?? true
         resultsFolder = try c.decodeIfPresent(String.self, forKey: .resultsFolder)
+    }
+}
+
+/// Guesses a project name from a repository path:
+/// `.../bink/repos/api` gives "bink", `.../Pacenote/app` gives "Pacenote".
+public enum ProjectInference {
+    static let containerNames: Set<String> = ["repos", "repositories", "src", "code", "git", "projects"]
+
+    public static func guess(path: String) -> String {
+        let parent = URL(fileURLWithPath: path).deletingLastPathComponent()
+        let parentName = parent.lastPathComponent
+        if containerNames.contains(parentName.lowercased()) {
+            let grandparent = parent.deletingLastPathComponent().lastPathComponent
+            if !grandparent.isEmpty && grandparent != "/" { return grandparent }
+        }
+        if parentName.isEmpty || parentName == "/" { return "Other" }
+        return parentName
     }
 }
 
@@ -206,19 +227,23 @@ public enum ResultsLocation {
         return cleaned
     }
 
-    /// Default subfolder name: the repository folder's own name, which does not change when the repo is renamed in the app.
-    /// Two repositories with the same folder name get a short id suffix so their scans never mix.
+    /// Default repository subfolder: the repository folder's own name, which does not change when the repo is renamed in the app.
+    /// Two repositories of one project with the same folder name get a short id suffix so their scans never mix.
     public static func defaultFolderName(for repo: RepoConfig, in repos: [RepoConfig]) -> String {
         let base = sanitize(URL(fileURLWithPath: repo.path).lastPathComponent)
+        let project = sanitize(repo.project)
         let clash = repos.contains { other in
-            other.id != repo.id && sanitize(URL(fileURLWithPath: other.path).lastPathComponent) == base
+            other.id != repo.id && sanitize(other.project) == project
+                && sanitize(URL(fileURLWithPath: other.path).lastPathComponent) == base
         }
         return clash ? "\(base)-\(repo.id.uuidString.prefix(4).lowercased())" : base
     }
 
+    /// `<launcher folder>/<project>/<repository folder>`.
     public static func defaultFolder(for repo: RepoConfig, config: AppConfig) -> String {
         if let launcher = config.launcherFolder {
             return URL(fileURLWithPath: launcher)
+                .appendingPathComponent(sanitize(repo.project), isDirectory: true)
                 .appendingPathComponent(defaultFolderName(for: repo, in: config.repos), isDirectory: true).path
         }
         return Paths.results.appendingPathComponent(repo.id.uuidString, isDirectory: true).path

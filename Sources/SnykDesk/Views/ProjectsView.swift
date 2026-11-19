@@ -17,17 +17,34 @@ struct ProjectsView: View {
         } else {
             HSplitView {
                 List(selection: $selected) {
-                    ForEach(model.config.repos) { repo in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(repo.name).font(.headline)
-                            if let run = model.latestRun(repo.id) {
-                                CountsRow(counts: run.counts).scaleEffect(0.85, anchor: .leading)
-                            } else {
-                                Text("Not scanned").font(.caption).foregroundStyle(.secondary)
+                    ForEach(model.projects, id: \.self) { project in
+                        Section {
+                            ForEach(model.repos(in: project)) { repo in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(repo.name).font(.headline)
+                                    if let run = model.latestRun(repo.id) {
+                                        CountsRow(counts: run.counts).scaleEffect(0.85, anchor: .leading)
+                                    } else {
+                                        Text("Not scanned").font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                                .tag(repo.id)
+                            }
+                        } header: {
+                            HStack {
+                                Text(project)
+                                Spacer()
+                                Button {
+                                    model.scanProject(project)
+                                } label: {
+                                    Image(systemName: "play.fill")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Scan all repositories of \(project)")
+                                .disabled(model.activeScan != nil)
                             }
                         }
-                        .padding(.vertical, 2)
-                        .tag(repo.id)
                     }
                 }
                 .frame(minWidth: 230, idealWidth: 260, maxWidth: 320)
@@ -85,6 +102,7 @@ struct ProjectDetail: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(repo.name).font(.title2.bold())
+                    Text("Project: \(repo.project)").font(.callout).foregroundStyle(.secondary)
                     Text(repo.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 Spacer()

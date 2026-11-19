@@ -115,13 +115,13 @@ final class LauncherTests: XCTestCase {
     func testScriptContainsReposAndIsValidBash() throws {
         var config = AppConfig()
         config.launcherFolder = "/tmp/launcher"
-        let repo = RepoConfig(name: "Mike's app", path: "/tmp/mike app", scanCode: false)
+        let repo = RepoConfig(name: "Mike's app", path: "/tmp/mike app", project: "Acme", scanCode: false)
         let custom = RepoConfig(name: "Emily", path: "/tmp/emily", resultsFolder: "/tmp/scans/emily")
         config.repos = [repo, custom]
         let text = LauncherGenerator.script(config: config, snykPath: "/usr/local/bin/snyk", pathEnv: "/usr/bin:/bin")
         XCTAssertTrue(text.hasPrefix("#!/bin/bash\n"))
         XCTAssertTrue(text.contains(Paths.launcherMarker))
-        XCTAssertTrue(text.contains("\(repo.id.uuidString)|Mike'\\''s app|/tmp/mike app|1|0|1|1|/tmp/launcher/mike app"))
+        XCTAssertTrue(text.contains("\(repo.id.uuidString)|Mike'\\''s app|/tmp/mike app|1|0|1|1|/tmp/launcher/Acme/mike app"))
         XCTAssertTrue(text.contains("\(custom.id.uuidString)|Emily|/tmp/emily|1|1|1|1|/tmp/scans/emily"))
 
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).sh")
@@ -147,9 +147,10 @@ final class ResultsLocationTests: XCTestCase {
     func testDefaultIsNextToLauncherAndCustomWins() {
         var config = AppConfig()
         config.launcherFolder = "/Users/mike/work/Tools/security-scan"
-        var repo = RepoConfig(name: "Renamed in app", path: "/Users/mike/work/repos/backend")
+        var repo = RepoConfig(name: "Renamed in app", path: "/Users/mike/work/acme/repos/backend")
         config.repos = [repo]
-        XCTAssertEqual(ResultsLocation.folder(for: repo, config: config), "/Users/mike/work/Tools/security-scan/backend")
+        XCTAssertEqual(repo.project, "acme")
+        XCTAssertEqual(ResultsLocation.folder(for: repo, config: config), "/Users/mike/work/Tools/security-scan/acme/backend")
         repo.resultsFolder = "/Users/mike/work/Client/security-scan"
         XCTAssertEqual(ResultsLocation.folder(for: repo, config: config), "/Users/mike/work/Client/security-scan")
     }
@@ -157,13 +158,15 @@ final class ResultsLocationTests: XCTestCase {
     func testSameFolderNamesDoNotMix() {
         var config = AppConfig()
         config.launcherFolder = "/l"
-        let first = RepoConfig(name: "a", path: "/one/api")
-        let second = RepoConfig(name: "b", path: "/two/api")
-        config.repos = [first, second]
+        let first = RepoConfig(name: "a", path: "/one/api", project: "Acme")
+        let second = RepoConfig(name: "b", path: "/two/api", project: "Acme")
+        let other = RepoConfig(name: "c", path: "/three/api", project: "Globex")
+        config.repos = [first, second, other]
         let a = ResultsLocation.folder(for: first, config: config)
         let b = ResultsLocation.folder(for: second, config: config)
         XCTAssertNotEqual(a, b)
-        XCTAssertTrue(a.hasPrefix("/l/api-"))
+        XCTAssertTrue(a.hasPrefix("/l/Acme/api-"))
+        XCTAssertEqual(ResultsLocation.folder(for: other, config: config), "/l/Globex/api")
     }
 
     func testOldRepoConfigWithoutResultsFolderStillLoads() throws {
@@ -171,6 +174,7 @@ final class ResultsLocationTests: XCTestCase {
         let config = try JSONDecoder().decode(AppConfig.self, from: Data(json.utf8))
         XCTAssertEqual(config.repos.count, 1)
         XCTAssertNil(config.repos[0].resultsFolder)
+        XCTAssertEqual(config.repos[0].project, "Other")
         XCTAssertFalse(config.repos[0].scanCode)
     }
 
@@ -184,6 +188,15 @@ final class ResultsLocationTests: XCTestCase {
         config.repos = [repo]
         let runs = ResultParser.loadRuns(repo: repo, config: config)
         XCTAssertEqual(runs.map(\.id), ["2026-11-08T09-00-00", "2026-11-01T09-00-00"])
+    }
+}
+
+final class ProjectInferenceTests: XCTestCase {
+    func testGuessesProjectFromPath() {
+        XCTAssertEqual(ProjectInference.guess(path: "/Users/mike/work/Acme/repos/api-server"), "Acme")
+        XCTAssertEqual(ProjectInference.guess(path: "/Users/mike/work/Acme/Repos/web"), "Acme")
+        XCTAssertEqual(ProjectInference.guess(path: "/Users/mike/work/Globex/app"), "Globex")
+        XCTAssertEqual(ProjectInference.guess(path: "/x"), "Other")
     }
 }
 

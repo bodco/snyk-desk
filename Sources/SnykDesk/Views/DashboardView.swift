@@ -30,9 +30,22 @@ struct DashboardView: View {
                             .frame(maxWidth: 360)
                         Spacer()
                     }
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 16)], spacing: 16) {
-                        ForEach(model.config.repos) { repo in
-                            RepoCard(repo: repo, run: model.latestRun(repo.id)) { openRepo(repo.id) }
+                    ForEach(model.projects, id: \.self) { project in
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 12) {
+                                Text(project).font(.title3.bold())
+                                Text("\(model.repos(in: project).count) repositories")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                Spacer()
+                                CountsRow(counts: model.projectCounts(project))
+                                Button("Scan project") { model.scanProject(project) }
+                                    .disabled(model.activeScan != nil)
+                            }
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 16)], spacing: 16) {
+                                ForEach(model.repos(in: project)) { repo in
+                                    RepoCard(repo: repo, run: model.latestRun(repo.id)) { openRepo(repo.id) }
+                                }
+                            }
                         }
                     }
                 }
@@ -45,7 +58,7 @@ struct DashboardView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Dashboard").font(.largeTitle.bold())
-                Text("Latest scan of each repository").foregroundStyle(.secondary)
+                Text("Latest scan of each repository, by project").foregroundStyle(.secondary)
             }
             Spacer()
             CountsRow(counts: model.totalCounts)

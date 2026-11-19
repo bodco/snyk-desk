@@ -232,6 +232,25 @@ final class AppModel: ObservableObject {
 
     func repo(_ id: UUID) -> RepoConfig? { config.repos.first { $0.id == id } }
 
+    /// Project names in the order their first repository was added.
+    var projects: [String] {
+        var names: [String] = []
+        for repo in config.repos where !names.contains(repo.project) { names.append(repo.project) }
+        return names
+    }
+
+    func repos(in project: String) -> [RepoConfig] {
+        config.repos.filter { $0.project == project }
+    }
+
+    func projectCounts(_ project: String) -> SeverityCounts {
+        repos(in: project).compactMap { latestRun($0.id)?.counts }.reduce(SeverityCounts(), +)
+    }
+
+    func scanProject(_ project: String) {
+        scan(repos(in: project).map(\.id))
+    }
+
     // MARK: Results folders
 
     func resultsFolder(for repo: RepoConfig) -> String {

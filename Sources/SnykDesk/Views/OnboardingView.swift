@@ -97,7 +97,7 @@ struct LauncherStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Where should the scan launcher live?").font(.title2.bold())
-            Text("The launcher is a small script, \(Paths.launcherName), that runs the Snyk CLI for each repository. The app and the schedule both use it, and you can run it from Terminal too. Scans are saved next to it, in one subfolder per repository, unless you pick another folder for a repository later.")
+            Text("The launcher is a small script, \(Paths.launcherName), that runs the Snyk CLI for each repository. The app and the schedule both use it, and you can run it from Terminal too. Scans are saved next to it as <project>/<repository>/<date-time>, unless you pick another folder for a repository later.")
                 .foregroundStyle(.secondary)
             Button("Choose folder…") { found = model.chooseLauncherFolder() }
                 .buttonStyle(.borderedProminent)
@@ -132,7 +132,7 @@ struct ReposStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Which repositories should be scanned?").font(.title2.bold())
-            Text("Pick local folders. You can add or remove them later in Settings, and choose per repository what to scan.")
+            Text("Pick local folders. The project is guessed from the path (for example .../bink/repos/api belongs to bink), and you can change it in Settings. You can also add or remove repositories there and choose per repository what to scan.")
                 .foregroundStyle(.secondary)
             Button("Add repositories…") { model.addRepos() }
                 .buttonStyle(.borderedProminent)
@@ -141,7 +141,7 @@ struct ReposStep: View {
                     ForEach(model.config.repos) { repo in
                         HStack {
                             VStack(alignment: .leading) {
-                                Text(repo.name)
+                                Text("\(repo.project) / \(repo.name)")
                                 Text(repo.path).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()

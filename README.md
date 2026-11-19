@@ -9,10 +9,11 @@ A small native macOS app that runs the [Snyk CLI](https://docs.snyk.io/snyk-cli)
 ## Features
 
 - **Guided setup**: choose a folder for the scan launcher (an existing launcher is detected and kept), install the Snyk CLI with a progress bar or detect the one you have, pick repository folders, log in to Snyk.
-- **Dashboard**: severity totals across all repositories, a card per repository with its latest scan, an empty state before the first scan.
+- **Projects with several repositories**: each repository belongs to a project, guessed from its path (`.../acme/repos/api` belongs to `acme`) and editable. The dashboard and the Projects tab are grouped by project, and a whole project can be scanned at once.
+- **Dashboard**: severity totals across all repositories and per project, a card per repository with its latest scan, an empty state before the first scan.
 - **Projects**: run one repository on its own, watch the progress and log, browse past scans, and filter findings by type (dependencies or code) and severity. Each finding shows the package or file, the dependency path and the fix version when there is one.
 - **Per repository switches**: dependency scan (`snyk test`), code scan (`snyk code test`) and a snapshot to your Snyk dashboard (`snyk monitor`).
-- **Results where you want them**: scans are saved next to the launcher by default, one subfolder per repository. Any repository can use its own folder instead, for example inside that client's project folder.
+- **Results where you want them**: scans are saved next to the launcher by default, as `<project>/<repository>/<date-time>`. Any repository can use its own folder instead, for example inside that client's project folder.
 - **Schedule**: daily or weekly scans of the repositories you pick, through launchd, so they run while the app is closed. A notification appears when a scheduled scan finishes.
 - **Free plan friendly**: a local estimate of this month's Open Source and Code tests against the Free plan limits, and one aggregated Maven test per multi-module repository instead of one test per `pom.xml`.
 - **Menu bar**: totals at a glance and a "Scan all now" button.
@@ -46,7 +47,7 @@ Snyk Desk.app ──writes──> <launcher folder>/snyk-desk-scan.sh ──runs
   ./snyk-desk-scan.sh                 # repositories that are in the schedule
   ./snyk-desk-scan.sh <repo-id> ...   # specific repositories (ids are in config.json)
   ```
-- **Results.** Each scan writes the raw Snyk output (`deps.json`, `code.json` in SARIF), the logs and the exit codes to `<results folder>/<timestamp>/`. By default the results folder of a repository is `<launcher folder>/<repository folder name>/`; two repositories with the same folder name get a short suffix so their scans never mix. In Settings or on the repository's page you can choose another folder, go back to the default, or open it in Finder. Nothing is written into your repositories unless you choose a folder inside one.
+- **Results.** Each scan writes the raw Snyk output (`deps.json`, `code.json` in SARIF), the logs and the exit codes to `<results folder>/<timestamp>/`. By default the results folder of a repository is `<launcher folder>/<project>/<repository folder name>/`; two repositories of one project with the same folder name get a short suffix so their scans never mix. Changing a repository's project moves its default folder, so earlier scans stay in the old folder. In Settings or on the repository's page you can choose another folder, go back to the default, or open it in Finder. Nothing is written into your repositories unless you choose a folder inside one.
 - **Settings** live in `~/Library/Application Support/SnykDesk/config.json`.
 - **Schedule.** The app writes `~/Library/LaunchAgents/pm.bodco.snykdesk.scan.plist` and loads it with `launchctl`. If the Mac is asleep at the scheduled time, launchd runs the scan after it wakes up. Turning the schedule off removes the agent.
 - **Login.** "Log in to Snyk" runs `snyk auth`, which opens your browser. The CLI stores the token in its own config. Snyk Desk never reads, shows or stores it.

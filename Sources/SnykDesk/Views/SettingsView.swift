@@ -12,7 +12,7 @@ struct SettingsView: View {
                     Text("No repositories yet.").foregroundStyle(.secondary)
                 }
                 ForEach($model.config.repos) { $repo in
-                    RepoSettingsRow(repo: $repo) { pendingRemoval = repo }
+                    RepoSettingsRow(repo: $repo, projects: model.projects) { pendingRemoval = repo }
                 }
                 Button("Add repositories…") { model.addRepos() }
             }
@@ -62,6 +62,7 @@ struct SettingsView: View {
 
 struct RepoSettingsRow: View {
     @Binding var repo: RepoConfig
+    let projects: [String]
     let onRemove: () -> Void
 
     var body: some View {
@@ -74,6 +75,25 @@ struct RepoSettingsRow: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Remove from Snyk Desk")
+            }
+            HStack(spacing: 6) {
+                Text("Project").font(.caption).foregroundStyle(.secondary)
+                TextField("Project", text: $repo.project)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                    .frame(maxWidth: 200)
+                Menu {
+                    ForEach(projects, id: \.self) { name in
+                        Button(name) { repo.project = name }
+                    }
+                    Divider()
+                    Button("Guess from folder") { repo.project = ProjectInference.guess(path: repo.path) }
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .menuStyle(.button)
+                .buttonStyle(.borderless)
+                .fixedSize()
             }
             Text(repo.path).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             if !FileManager.default.fileExists(atPath: repo.path) {

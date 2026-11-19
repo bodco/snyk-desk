@@ -2,7 +2,8 @@
 
 ## 0.2.0 - 2026-11-19
 
-- Scans are now saved next to the launcher by default, in one subfolder per repository (`<launcher folder>/<repository folder>/<timestamp>/`), instead of a hidden folder in Application Support.
+- Projects: each repository belongs to a project (guessed from its path, editable in Settings). The dashboard and the Projects tab are grouped by project, with a "Scan project" button.
+- Scans are now saved next to the launcher by default as `<launcher folder>/<project>/<repository folder>/<timestamp>/`, instead of a hidden folder in Application Support.
 - Each repository can use its own results folder: choose it in Settings or on the repository's page, go back to the default, or show it in Finder.
 - Scans made with 0.1.0 are still shown in the history.
 
