@@ -8,7 +8,8 @@ A small native macOS app that runs the [Snyk CLI](https://docs.snyk.io/snyk-cli)
 
 ## Features
 
-- **Guided setup**: choose a folder for the scan launcher (an existing launcher is detected and kept), install the Snyk CLI with a progress bar or detect the one you have, pick repository folders, log in to Snyk.
+- **Guided setup**: choose a folder for the scan launcher (an existing launcher is detected and kept), install the Snyk CLI with a progress bar or detect the one you have, pick repository folders, install the build tools they need, log in to Snyk.
+- **Build tools without Terminal**: the app looks at your repositories (`pom.xml`, `build.gradle`, `package.json`, `go.mod`, Python and Swift files), shows which of Java, Maven, Gradle, Node.js, Go and the Xcode Command Line Tools they need, and installs the missing ones with one button and a progress bar. Downloads come from the official sites into the app's own folder, with no admin password and no Homebrew.
 - **Projects with several repositories**: each repository belongs to a project, guessed from its path (`.../acme/repos/api` belongs to `acme`) and editable. The dashboard and the Projects tab are grouped by project, and a whole project can be scanned at once.
 - **Dashboard**: severity totals across all repositories and per project, a card per repository with its latest scan, an empty state before the first scan.
 - **Projects**: run one repository on its own, watch the progress and log, browse past scans, and filter findings by type (dependencies or code) and severity. Each finding shows the package or file, the dependency path and the fix version when there is one.
@@ -22,7 +23,7 @@ A small native macOS app that runs the [Snyk CLI](https://docs.snyk.io/snyk-cli)
 
 - macOS 14 Sonoma or newer, Apple Silicon.
 - A Snyk account. The [Free plan](https://snyk.io/plans/) works.
-- The build tools your projects need for dependency resolution, for example `mvn` for Maven or `npm` for Node projects. Snyk needs them to read the dependency tree.
+- The build tools your projects need for dependency resolution (Maven for a `pom.xml`, Gradle, Node.js and so on). Snyk runs them to read the dependency tree. You do not have to install them yourself: setup and **Settings > Tools** list what is missing and install it. Tools you already have are used as they are.
 
 ## Install
 
@@ -51,6 +52,7 @@ Snyk Desk.app ──writes──> <launcher folder>/snyk-desk-scan.sh ──runs
 - **Settings** live in `~/Library/Application Support/SnykDesk/config.json`.
 - **Schedule.** The app writes `~/Library/LaunchAgents/pm.bodco.snykdesk.scan.plist` and loads it with `launchctl`. If the Mac is asleep at the scheduled time, launchd runs the scan after it wakes up. Turning the schedule off removes the agent.
 - **Login.** "Log in to Snyk" runs `snyk auth`, which opens your browser. The CLI stores the token in its own config. Snyk Desk never reads, shows or stores it.
+- **Build tools.** Setup and Settings > Tools check each tool on your PATH and in `~/Library/Application Support/SnykDesk/tools`. Missing ones are downloaded from the official sites (Temurin JDK 21, Apache Maven, Gradle, Node.js, Go), unpacked there and added to the launcher's PATH and `JAVA_HOME`. Your own installs win over these. The Xcode Command Line Tools (git, Python 3, Swift) can only come from Apple's own installer, so the app opens it and waits. Before each dependency scan the launcher checks that the repository's build tool runs, and if it does not, the scan reports that in plain words instead of the generic `SNYK-CLI-0000` error.
 - **CLI install.** If `snyk` is not on your PATH, the app downloads the standalone binary from `downloads.snyk.io` into `~/Library/Application Support/SnykDesk/bin`. An existing install (npm, Homebrew) is used as is.
 
 ## Free plan limits

@@ -5,13 +5,14 @@ struct OnboardingView: View {
     @EnvironmentObject private var model: AppModel
     @State private var step = 0
 
-    private let titles = ["Launcher", "Snyk CLI", "Repositories", "Snyk account"]
+    private let titles = ["Launcher", "Snyk CLI", "Repositories", "Tools", "Snyk account"]
 
     private var canContinue: Bool {
         switch step {
         case 0: return model.config.launcherFolder != nil && model.launcherStatus == .installed
         case 1: return model.snykPath != nil
         case 2: return !model.config.repos.isEmpty
+        case 3: return model.toolInstall == nil
         default: return model.isLoggedIn
         }
     }
@@ -35,6 +36,7 @@ struct OnboardingView: View {
                 case 0: LauncherStep()
                 case 1: CLIStep()
                 case 2: ReposStep()
+                case 3: ToolsStep()
                 default: LoginStep()
                 }
             }
@@ -158,6 +160,20 @@ struct ReposStep: View {
             }
             Text("By default each repository gets a dependency scan, a code scan and a snapshot in your Snyk dashboard. A code scan uploads the source code to Snyk for analysis.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct ToolsStep: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Tools your repositories need").font(.title2.bold())
+                Text("The Snyk CLI runs your build tool to read the dependencies: Maven for a pom.xml, Gradle for build.gradle, and so on. Without it a dependency scan fails. Snyk Desk checked your repositories and lists what is needed. Press Install and it does the rest. You can skip this and do it later in Settings.")
+                    .foregroundStyle(.secondary)
+                ToolsPanel()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

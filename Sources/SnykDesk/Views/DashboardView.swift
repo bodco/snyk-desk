@@ -22,6 +22,7 @@ struct DashboardView: View {
                     if let scan = model.activeScan {
                         ScanProgressView(scan: scan)
                     }
+                    DashboardToolsBanner()
                     if !model.hasAnyRun && model.activeScan == nil {
                         notScannedBanner
                     }
@@ -126,5 +127,30 @@ struct RepoCard: View {
         .padding(14)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.2)))
+    }
+}
+
+/// Tells the user, before they scan, that some repositories need build tools that are not installed.
+struct DashboardToolsBanner: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        let missing = model.missingRequiredTools
+        if !missing.isEmpty || model.toolInstall != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                if let install = model.toolInstall {
+                    ToolProgressView(install: install)
+                } else {
+                    Label("Some repositories need tools that are not installed: \(missing.map { ToolCatalog.spec($0).title }.joined(separator: ", ")). Their dependency scans would fail.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Button("Install missing tools") { model.installTools(missing) }
+                        .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        }
     }
 }

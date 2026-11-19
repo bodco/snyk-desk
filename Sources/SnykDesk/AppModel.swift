@@ -36,10 +36,17 @@ final class AppModel: ObservableObject {
     @Published private(set) var installProgress: Double?
     @Published private(set) var installError: String?
     @Published private(set) var activeScan: ActiveScan?
+    @Published var toolStatus: [ToolID: ToolStatus] = [:]
+    @Published var toolNeeds: [ToolID: [String]] = [:]
+    @Published var repoNeeds: [UUID: Set<ToolID>] = [:]
+    @Published var toolInstall: ToolInstallState?
+    @Published var toolErrors: [ToolID: String] = [:]
+    @Published var waitingForCommandLineTools = false
+    @Published var toolsChecked = false
     @Published var scheduleMessage: String?
     @Published var lastError: String?
 
-    private(set) var pathEnv: String = Shell.merge([], Shell.commonDirs)
+    var pathEnv: String = Shell.merge([], Shell.commonDirs)
     private var scanProcess: Process?
     private var downloader: CLIDownloader?
 
@@ -75,7 +82,8 @@ final class AppModel: ObservableObject {
         if !force && LauncherGenerator.status(in: folder) == .foreign { return }
         do {
             try LauncherGenerator.install(config: config, folder: folder,
-                                          snykPath: config.snykPath ?? "snyk", pathEnv: pathEnv)
+                                          snykPath: config.snykPath ?? "snyk", pathEnv: pathEnv,
+                                          javaHome: ToolCatalog.managedJavaHome())
         } catch {
             lastError = "Could not write the launcher: \(error.localizedDescription)"
         }
@@ -113,6 +121,7 @@ final class AppModel: ObservableObject {
         await detectCLI()
         await checkAuth()
         writeLauncher()
+        await refreshTools()
     }
 
     func environment() -> [String: String] { Shell.environment(path: pathEnv) }

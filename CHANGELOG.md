@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 - 2026-11-19
+
+- Build tools: setup has a new "Tools" step, and Settings has a "Tools" section. The app reads your repositories, lists which of Java, Maven, Gradle, Node.js, Go and the Xcode Command Line Tools they need, and installs the missing ones with a progress bar. No Terminal, no Homebrew, no admin password: tools are downloaded from the official sites into the app's own folder. Tools you already have are used as they are, and the ones the app installed can be removed.
+- A dependency scan of a repository whose build tool is missing no longer ends with the generic `SNYK-CLI-0000` error. The launcher checks first and says which tool to install. The dashboard and the repository page show a warning with an install button.
+- The launcher is now v3: it exports `JAVA_HOME` and the PATH of the tools the app installed, so scans from the app and from launchd use them.
+
 ## 0.2.0 - 2026-11-19
 
 - Projects: each repository belongs to a project (guessed from its path, editable in Settings). The dashboard and the Projects tab are grouped by project, with a "Scan project" button.

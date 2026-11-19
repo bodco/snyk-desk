@@ -33,6 +33,10 @@ struct SettingsView: View {
                 CLIStatusView()
             }
 
+            Section("Tools") {
+                ToolsPanel()
+            }
+
             Section("Snyk account") {
                 AuthStatusView()
             }
