@@ -240,8 +240,18 @@ struct AuthStatusView: View {
                 Button(model.isLoggedIn ? "Log in again" : "Log in to Snyk") { model.login() }
                     .buttonStyle(.borderedProminent)
                     .disabled(model.snykPath == nil || model.auth == .loggingIn)
+                if model.isLoggedIn {
+                    Button("Switch account…") { model.logout(thenLogin: true) }
+                        .disabled(model.snykPath == nil)
+                    Button("Log out") { model.logout() }
+                        .disabled(model.snykPath == nil)
+                }
                 Button("Check again") { Task { await model.checkAuth() } }
                     .disabled(model.snykPath == nil)
+            }
+            if model.isLoggedIn {
+                Text("Switch account logs out and opens the login page. If the browser is signed in to the first account at snyk.io, sign out there too or use a private window.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Text("Login opens snyk.io in your browser. The Snyk CLI keeps the token, Snyk Desk never reads or stores it.")
                 .font(.caption).foregroundStyle(.secondary)

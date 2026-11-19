@@ -218,6 +218,25 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Signs the CLI out. With `thenLogin` it opens the browser login right after, to switch accounts.
+    func logout(thenLogin: Bool = false) {
+        guard let snyk = snykPath else { return }
+        let env = environment()
+        auth = .checking
+        Task {
+            for command in SnykAuth.logoutCommands {
+                let result = await Task.detached { Shell.run(snyk, command, environment: env) }.value
+                AppLog.write("snyk \(command.joined(separator: " ")): exit \(result.status)")
+            }
+            await checkAuth()
+            if env["SNYK_TOKEN"] != nil, isLoggedIn {
+                lastError = "The SNYK_TOKEN environment variable is set, so the CLI stays logged in with it. Remove it to switch accounts."
+                return
+            }
+            if thenLogin { login() }
+        }
+    }
+
     var isLoggedIn: Bool {
         if case .loggedIn = auth { return true }
         return false

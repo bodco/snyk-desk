@@ -514,4 +514,10 @@ final class ToolTests: XCTestCase {
         try text.write(to: file, atomically: true, encoding: .utf8)
         XCTAssertEqual(Shell.run("/bin/bash", ["-n", file.path]).status, 0)
     }
+
+    func testLogoutClearsBothTokens() {
+        let flat = SnykAuth.logoutCommands.map { $0.joined(separator: " ") }
+        XCTAssertTrue(flat.contains("config unset api"))
+        XCTAssertTrue(flat.contains("config unset INTERNAL_OAUTH_TOKEN_STORAGE"))
+    }
 }

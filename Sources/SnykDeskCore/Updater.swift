@@ -54,3 +54,12 @@ public enum Updater {
         """
     }
 }
+
+/// How the app signs the Snyk CLI out. The CLI keeps the token in its own config,
+/// either as an API token or as an OAuth token, so both are cleared.
+public enum SnykAuth {
+    public static let logoutCommands: [[String]] = [
+        ["config", "unset", "api"],
+        ["config", "unset", "INTERNAL_OAUTH_TOKEN_STORAGE"],
+    ]
+}
