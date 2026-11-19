@@ -27,12 +27,19 @@
 
 ## Встановлення
 
-1. Завантажте `SnykDesk-<version>.zip` з [Releases](https://github.com/bodco/snyk-desk/releases).
-2. Розпакуйте і перемістіть **Snyk Desk** у Applications.
-3. Застосунок підписаний ad hoc і не нотаризований. Першого разу клацніть правою кнопкою і виберіть **Open**, або виконайте:
-   ```
-   xattr -dr com.apple.quarantine "/Applications/Snyk Desk.app"
-   ```
+Одна команда. Файли, завантажені через `curl`, не мають позначки карантину, тому macOS не показує "Apple could not verify ... is free of malware", і так само працює оновлення:
+
+```
+curl -fsSL https://raw.githubusercontent.com/bodco/snyk-desk/main/scripts/install.sh | bash
+```
+
+Коли застосунок встановлено, він оновлюється сам: **Settings > Updates** (і банер на дашборді) показує новий реліз і замінює застосунок на місці, знову без попередження macOS.
+
+Завантаження zip з [Releases](https://github.com/bodco/snyk-desk/releases) через браузер теж працює, але браузер помічає файл, а застосунок не нотаризований (для цього потрібен платний Apple Developer ID). Тоді клацніть правою кнопкою і виберіть **Open**, або виконайте:
+
+```
+xattr -dr com.apple.quarantine "/Applications/Snyk Desk.app"
+```
 
 ## Як це працює
 

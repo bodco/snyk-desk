@@ -27,12 +27,19 @@ A small native macOS app that runs the [Snyk CLI](https://docs.snyk.io/snyk-cli)
 
 ## Install
 
-1. Download `SnykDesk-<version>.zip` from [Releases](https://github.com/bodco/snyk-desk/releases).
-2. Unzip it and move **Snyk Desk** to Applications.
-3. The app is signed ad hoc and not notarized. The first time, right-click it and choose **Open**, or run:
-   ```
-   xattr -dr com.apple.quarantine "/Applications/Snyk Desk.app"
-   ```
+One command. Files downloaded by `curl` carry no quarantine mark, so macOS does not show "Apple could not verify ... is free of malware", and it works the same for updates:
+
+```
+curl -fsSL https://raw.githubusercontent.com/bodco/snyk-desk/main/scripts/install.sh | bash
+```
+
+Once the app is installed, it updates itself: **Settings > Updates** (and a banner on the dashboard) shows a new release and replaces the app in place, again without the macOS warning.
+
+Downloading the zip from [Releases](https://github.com/bodco/snyk-desk/releases) in a browser also works, but the browser marks the file, and the app is not notarized (that needs a paid Apple Developer ID). Then right-click the app and choose **Open**, or run:
+
+```
+xattr -dr com.apple.quarantine "/Applications/Snyk Desk.app"
+```
 
 ## How it works
 

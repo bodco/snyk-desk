@@ -1,0 +1,33 @@
+Snyk Desk
+
+1. Move Snyk Desk to the Applications folder.
+
+2. First open. The app is signed ad hoc and not notarized by Apple, so macOS blocks the first launch
+   of a copy downloaded in a browser. Double-click Snyk Desk, close the warning, open System Settings >
+   Privacy & Security, scroll down and press "Open Anyway" next to Snyk Desk.
+   Or run this once in Terminal:
+   xattr -dr com.apple.quarantine "/Applications/Snyk Desk.app"
+
+3. Updates. After that the app updates itself (Check for updates, bottom of the sidebar) and macOS
+   does not ask again. Installing or updating from Terminal never asks either:
+   curl -fsSL https://raw.githubusercontent.com/bodco/snyk-desk/main/scripts/install.sh | bash
+
+https://github.com/bodco/snyk-desk
+
+----------------------------------------------------------------------------------------------
+
+Snyk Desk
+
+1. Перемістіть Snyk Desk у папку Applications.
+
+2. Перший запуск. Застосунок підписаний ad hoc і не нотаризований Apple, тому macOS блокує перший
+   запуск копії, завантаженої в браузері. Двічі клацніть Snyk Desk, закрийте попередження, відкрийте
+   System Settings > Privacy & Security, прокрутіть униз і натисніть "Open Anyway" біля Snyk Desk.
+   Або один раз виконайте в Terminal:
+   xattr -dr com.apple.quarantine "/Applications/Snyk Desk.app"
+
+3. Оновлення. Далі застосунок оновлюється сам (Check for updates, внизу бокової панелі), і macOS
+   більше не питає. Встановлення чи оновлення з Terminal теж ніколи не питає:
+   curl -fsSL https://raw.githubusercontent.com/bodco/snyk-desk/main/scripts/install.sh | bash
+
+https://github.com/bodco/snyk-desk

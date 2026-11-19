@@ -45,6 +45,10 @@ final class AppModel: ObservableObject {
     @Published var toolsChecked = false
     @Published var scheduleMessage: String?
     @Published var lastError: String?
+    @Published var availableUpdate: UpdateInfo?
+    @Published var updateStatus: String?
+    @Published var updateFraction = 0.0
+    @Published var isUpdating = false
 
     var pathEnv: String = Shell.merge([], Shell.commonDirs)
     private var scanProcess: Process?
@@ -123,6 +127,7 @@ final class AppModel: ObservableObject {
         await checkAuth()
         writeLauncher()
         await refreshTools()
+        await checkForUpdate()
     }
 
     func environment() -> [String: String] { Shell.environment(path: pathEnv) }
@@ -210,6 +215,25 @@ final class AppModel: ObservableObject {
                 lastError = "Snyk login did not finish: \(result.output.trimmingCharacters(in: .whitespacesAndNewlines))"
             }
             await checkAuth()
+        }
+    }
+
+    /// Signs the CLI out. With `thenLogin` it opens the browser login right after, to switch accounts.
+    func logout(thenLogin: Bool = false) {
+        guard let snyk = snykPath else { return }
+        let env = environment()
+        auth = .checking
+        Task {
+            for command in SnykAuth.logoutCommands {
+                let result = await Task.detached { Shell.run(snyk, command, environment: env) }.value
+                AppLog.write("snyk \(command.joined(separator: " ")): exit \(result.status)")
+            }
+            await checkAuth()
+            if env["SNYK_TOKEN"] != nil, isLoggedIn {
+                lastError = "The SNYK_TOKEN environment variable is set, so the CLI stays logged in with it. Remove it to switch accounts."
+                return
+            }
+            if thenLogin { login() }
         }
     }
 
@@ -302,7 +326,12 @@ final class AppModel: ObservableObject {
     func reloadRuns() {
         var all: [UUID: [ScanRun]] = [:]
         for repo in config.repos {
-            all[repo.id] = ResultParser.loadRuns(repo: repo, config: config)
+            let loaded = ResultParser.loadRuns(repo: repo, config: config)
+            all[repo.id] = loaded
+            // Keep a readable copy of every finished scan next to the raw files (also fills in older scans).
+            for run in loaded {
+                ReportWriter.save(run: run, repo: repo.name, project: repo.project, path: repo.path)
+            }
         }
         runs = all
     }

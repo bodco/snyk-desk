@@ -27,5 +27,9 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 # Ad-hoc signature: enough to run locally, not notarized.
 codesign --force --deep --sign - "$APP"
 
-(cd dist && ditto -c -k --keepParent "Snyk Desk.app" "SnykDesk-$VERSION.zip")
+# The zip holds the app and a short "Read me first" for the macOS first-launch warning.
+STAGE="$(mktemp -d)"
+cp -R "$APP" "$STAGE/"
+cp "Resources/Read me first.txt" "$STAGE/"
+(cd "$STAGE" && ditto -c -k . "$ROOT/dist/SnykDesk-$VERSION.zip")
 echo "Built dist/SnykDesk-$VERSION.zip"

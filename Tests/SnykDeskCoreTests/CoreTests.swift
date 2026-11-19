@@ -483,4 +483,62 @@ final class ToolTests: XCTestCase {
         let text = PromptBuilder.repoPrompt(findings: many, repo: "r", project: "p", path: "/p", filter: "f", scanDate: "d")
         XCTAssertTrue(text.contains("Ще 5 без деталей"))
     }
+
+    func testVersionComparison() {
+        XCTAssertTrue(Updater.isNewer("v0.2.10", than: "0.2.9"))
+        XCTAssertTrue(Updater.isNewer("0.3.0", than: "0.2.9"))
+        XCTAssertFalse(Updater.isNewer("0.2.2", than: "0.2.2"))
+        XCTAssertFalse(Updater.isNewer("0.2.1", than: "0.2.2"))
+        XCTAssertFalse(Updater.isNewer("0.2.2", than: "0.2.2-dev"))
+        XCTAssertTrue(Updater.isNewer("0.2.3", than: "0.0.0-dev"))
+    }
+
+    func testParsesLatestRelease() {
+        let json = """
+        {"tag_name":"v0.2.3","body":"notes","assets":[{"name":"x.txt","browser_download_url":"https://a/x.txt"},
+        {"name":"SnykDesk-0.2.3.zip","browser_download_url":"https://github.com/bodco/snyk-desk/releases/download/v0.2.3/SnykDesk-0.2.3.zip"}]}
+        """
+        let info = Updater.parse(Data(json.utf8), current: "0.2.2")
+        XCTAssertEqual(info?.version, "0.2.3")
+        XCTAssertTrue(info?.assetURL.hasSuffix("SnykDesk-0.2.3.zip") == true)
+        XCTAssertNil(Updater.parse(Data(json.utf8), current: "0.2.3"))
+        XCTAssertNil(Updater.parse(Data("{\"tag_name\":\"v9.0.0\",\"assets\":[]}".utf8), current: "0.2.2"))
+        XCTAssertNil(Updater.parse(Data("nonsense".utf8), current: "0.2.2"))
+    }
+
+    func testSwapScriptIsValidBashAndQuotesPaths() throws {
+        let text = Updater.swapScript(pid: 123, newApp: "/tmp/it's/Snyk Desk.app", destination: "/Applications/Snyk Desk.app")
+        XCTAssertTrue(text.contains("kill -0 123"))
+        XCTAssertTrue(text.contains("'/tmp/it'\\''s/Snyk Desk.app'"))
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).sh")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertEqual(Shell.run("/bin/bash", ["-n", file.path]).status, 0)
+    }
+
+    func testLogoutClearsBothTokens() {
+        let flat = SnykAuth.logoutCommands.map { $0.joined(separator: " ") }
+        XCTAssertTrue(flat.contains("config unset api"))
+        XCTAssertTrue(flat.contains("config unset INTERNAL_OAUTH_TOKEN_STORAGE"))
+    }
+
+    func testReportIsWrittenOnceForFinishedScans() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("2026-11-20T10-00-00")
+        try? FileManager.default.removeItem(at: dir)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let finding = Finding(id: "1", kind: .code, severity: .high, title: "XSS", issueId: "python/XSS",
+                              location: "a.py:3", detail: "bad", url: "https://x", cwe: ["CWE-79"])
+        var run = ScanRun(id: "2026-11-20T10-00-00", repoId: UUID(), date: Date(), dependencies: .clean, code: .issues,
+                          monitor: .skipped, dependencyProjects: 0, findings: [finding], notes: [], directory: dir)
+        XCTAssertFalse(ReportWriter.save(run: run, repo: "server", project: "Acme", path: "/p"), "not finished yet")
+        try "1".write(to: dir.appendingPathComponent("finished"), atomically: true, encoding: .utf8)
+        XCTAssertTrue(ReportWriter.save(run: run, repo: "server", project: "Acme", path: "/p"))
+        XCTAssertFalse(ReportWriter.save(run: run, repo: "server", project: "Acme", path: "/p"), "only once")
+        let text = try String(contentsOf: dir.appendingPathComponent("report.md"), encoding: .utf8)
+        XCTAssertTrue(text.contains("XSS"))
+        XCTAssertTrue(text.contains("a.py:3"))
+        let json = try JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("summary.json"))) as? [String: Any]
+        XCTAssertEqual((json?["counts"] as? [String: Int])?["high"], 1)
+        run.directory = nil
+        XCTAssertFalse(ReportWriter.save(run: run, repo: "x", project: "y", path: "z"))
+    }
 }

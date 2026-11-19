@@ -37,6 +37,26 @@ struct SettingsView: View {
                 ToolsPanel()
             }
 
+            Section("Updates") {
+                HStack {
+                    Text("Snyk Desk \(AppModel.currentVersion)")
+                    Spacer()
+                    if model.availableUpdate != nil {
+                        Button("Install \(model.availableUpdate?.version ?? "") and restart") { model.installUpdate() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(model.isUpdating)
+                    } else {
+                        Button("Check for updates") { Task { await model.checkForUpdate(report: true) } }
+                    }
+                }
+                if model.isUpdating { ProgressView(value: model.updateFraction) }
+                if let status = model.updateStatus {
+                    Text(status).font(.caption).foregroundStyle(.secondary)
+                }
+                Text("Updates are downloaded by the app itself, so macOS does not ask you to confirm the app again.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Logs") {
                 HStack {
                     Text("Every scan writes scan.log into its own folder. The app keeps its own log here.")
@@ -220,8 +240,18 @@ struct AuthStatusView: View {
                 Button(model.isLoggedIn ? "Log in again" : "Log in to Snyk") { model.login() }
                     .buttonStyle(.borderedProminent)
                     .disabled(model.snykPath == nil || model.auth == .loggingIn)
+                if model.isLoggedIn {
+                    Button("Switch account…") { model.logout(thenLogin: true) }
+                        .disabled(model.snykPath == nil)
+                    Button("Log out") { model.logout() }
+                        .disabled(model.snykPath == nil)
+                }
                 Button("Check again") { Task { await model.checkAuth() } }
                     .disabled(model.snykPath == nil)
+            }
+            if model.isLoggedIn {
+                Text("Switch account logs out and opens the login page. If the browser is signed in to the first account at snyk.io, sign out there too or use a private window.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Text("Login opens snyk.io in your browser. The Snyk CLI keeps the token, Snyk Desk never reads or stores it.")
                 .font(.caption).foregroundStyle(.secondary)
