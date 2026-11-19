@@ -2,7 +2,7 @@
 
 ## 0.2.3 - 2026-11-20
 
-- No more "Apple could not verify" on every reinstall. That warning appears for any app downloaded in a browser that is not notarized (notarization needs a paid Apple Developer ID). Two ways around it: `scripts/install.sh` (one `curl` command; curl downloads are not quarantined) and an in-app updater (Settings > Updates, plus a dashboard banner) that downloads the new release itself, swaps the app after it quits and starts it again.
+- No more "Apple could not verify" on every reinstall. That warning appears for any app downloaded in a browser that is not notarized (notarization needs a paid Apple Developer ID). Two ways around it: `scripts/install.sh` (one `curl` command; curl downloads are not quarantined) and an in-app updater (Settings > Updates, plus a dashboard banner) that downloads the new release itself, swaps the app after it quits and starts it again. The "Check for updates" button sits at the bottom of the sidebar and in the app menu, and becomes "Install <version> and restart" when a new release exists.
 
 ## 0.2.2 - 2026-11-20
 

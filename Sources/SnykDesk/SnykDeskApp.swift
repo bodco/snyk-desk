@@ -21,6 +21,15 @@ struct SnykDeskApp: App {
                 .frame(minWidth: 920, minHeight: 620)
         }
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                if let update = model.availableUpdate {
+                    Button("Install Snyk Desk \(update.version) and Restart") { model.installUpdate() }
+                } else {
+                    Button("Check for Updates…") { Task { await model.checkForUpdate(report: true) } }
+                }
+            }
+        }
 
         MenuBarExtra("Snyk Desk", systemImage: "shield.lefthalf.filled") {
             MenuBarContent()
@@ -103,6 +112,32 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
+/// Version line at the bottom of the sidebar. The button checks for updates and turns into the install button when there is one.
+struct UpdateFooter: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Divider()
+            Text("Snyk Desk \(AppModel.currentVersion)").font(.caption).foregroundStyle(.secondary)
+            if model.isUpdating {
+                ProgressView(value: model.updateFraction)
+            } else if let update = model.availableUpdate {
+                Button("Install \(update.version) and restart") { model.installUpdate() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            } else {
+                Button("Check for updates") { Task { await model.checkForUpdate(report: true) } }
+                    .controlSize(.small)
+            }
+            if let status = model.updateStatus {
+                Text(status).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding([.horizontal, .bottom], 12)
+    }
+}
+
 struct MainView: View {
     @State private var selection: SidebarItem? = .dashboard
     @State private var selectedRepo: UUID?
@@ -112,6 +147,7 @@ struct MainView: View {
             List(SidebarItem.allCases, selection: $selection) { item in
                 Label(item.title, systemImage: item.icon).tag(item)
             }
+            .safeAreaInset(edge: .bottom) { UpdateFooter() }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190)
         } detail: {
             switch selection ?? .dashboard {
