@@ -136,9 +136,9 @@ public enum StepStatus: String, Codable, Sendable {
         }
     }
 
-    /// Whether the step ran against Snyk and likely used a test from the monthly quota.
+    /// Whether the step reached Snyk and used a test from the monthly quota. A step that failed before testing (for example a Maven tree that could not be built) does not.
     public var consumedTest: Bool {
-        self == .clean || self == .issues || self == .error
+        self == .clean || self == .issues
     }
 }
 
@@ -298,6 +298,9 @@ public struct AppConfig: Codable, Equatable, Sendable {
     public var snykPath: String? = nil
     public var repos: [RepoConfig] = []
     public var schedule: ScheduleConfig = ScheduleConfig()
+    /// Vulnerabilities the user chose to ignore, kept by this app (nothing is written into the repositories).
+    public var ignores: [IgnoreRule] = []
+    public var usage: UsageSettings = UsageSettings()
 
     public init() {}
 
@@ -308,6 +311,109 @@ public struct AppConfig: Codable, Equatable, Sendable {
         snykPath = try c.decodeIfPresent(String.self, forKey: .snykPath)
         repos = try c.decodeIfPresent([RepoConfig].self, forKey: .repos) ?? []
         schedule = try c.decodeIfPresent(ScheduleConfig.self, forKey: .schedule) ?? ScheduleConfig()
+        ignores = try c.decodeIfPresent([IgnoreRule].self, forKey: .ignores) ?? []
+        usage = try c.decodeIfPresent(UsageSettings.self, forKey: .usage) ?? UsageSettings()
+    }
+}
+
+/// Why a vulnerability is ignored. The same three choices Snyk offers.
+public enum IgnoreReason: String, Codable, CaseIterable, Sendable {
+    case notVulnerable, wontFix, temporary
+
+    public var label: String {
+        switch self {
+        case .notVulnerable: return "Not vulnerable"
+        case .wontFix: return "Won't fix"
+        case .temporary: return "Temporary ignore"
+        }
+    }
+}
+
+public struct IgnoreRule: Codable, Identifiable, Equatable, Sendable {
+    public var key: String
+    public var repoId: UUID
+    public var title: String
+    public var severity: Severity
+    public var location: String
+    public var reason: IgnoreReason
+    public var comment: String
+    public var created: Date
+    /// nil means never.
+    public var expires: Date?
+
+    public var id: String { "\(repoId.uuidString)|\(key)" }
+
+    public init(key: String, repoId: UUID, title: String, severity: Severity, location: String,
+                reason: IgnoreReason, comment: String, created: Date = Date(), expires: Date? = nil) {
+        self.key = key
+        self.repoId = repoId
+        self.title = title
+        self.severity = severity
+        self.location = location
+        self.reason = reason
+        self.comment = comment
+        self.created = created
+        self.expires = expires
+    }
+
+    public func isActive(at now: Date = Date()) -> Bool {
+        guard let expires else { return true }
+        return expires > now
+    }
+}
+
+public extension Finding {
+    /// Identifies the same vulnerability in later scans: type, rule or advisory, and where it sits.
+    var ignoreKey: String { "\(kind.rawValue)|\(issueId)|\(location)" }
+}
+
+public extension ScanRun {
+    /// Splits the findings into open ones and ignored ones (with the rule that ignores them).
+    func splitIgnored(_ rules: [IgnoreRule], now: Date = Date()) -> (open: [Finding], ignored: [(finding: Finding, rule: IgnoreRule)]) {
+        var active: [String: IgnoreRule] = [:]
+        for rule in rules where rule.repoId == repoId && rule.isActive(at: now) { active[rule.key] = rule }
+        var open: [Finding] = []
+        var ignored: [(finding: Finding, rule: IgnoreRule)] = []
+        for finding in findings {
+            if let rule = active[finding.ignoreKey] { ignored.append((finding, rule)) } else { open.append(finding) }
+        }
+        return (open, ignored)
+    }
+
+    /// The run as the user sees it: ignored vulnerabilities removed from the list and the counts.
+    func withoutIgnored(_ rules: [IgnoreRule], now: Date = Date()) -> ScanRun {
+        var copy = self
+        copy.findings = splitIgnored(rules, now: now).open
+        return copy
+    }
+}
+
+/// Free plan limits and, optionally, the numbers read from Snyk's own Usage page.
+public struct UsageSettings: Codable, Equatable, Sendable {
+    public var openSourceLimit: Int = 400
+    public var codeLimit: Int = 100
+    public var calibration: UsageCalibration? = nil
+
+    public init() {}
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        openSourceLimit = try c.decodeIfPresent(Int.self, forKey: .openSourceLimit) ?? 400
+        codeLimit = try c.decodeIfPresent(Int.self, forKey: .codeLimit) ?? 100
+        calibration = try c.decodeIfPresent(UsageCalibration.self, forKey: .calibration)
+    }
+}
+
+/// What Snyk's Usage page said at one moment; scans made after it are added on top.
+public struct UsageCalibration: Codable, Equatable, Sendable {
+    public var date: Date
+    public var openSourceUsed: Int
+    public var codeUsed: Int
+
+    public init(date: Date = Date(), openSourceUsed: Int, codeUsed: Int) {
+        self.date = date
+        self.openSourceUsed = openSourceUsed
+        self.codeUsed = codeUsed
     }
 }
 

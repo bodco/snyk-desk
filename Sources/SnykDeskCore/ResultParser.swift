@@ -281,24 +281,36 @@ public enum ResultParser {
 }
 
 public struct MonthlyUsage: Equatable, Sendable {
-    public static let openSourceLimit = 200
-    public static let codeLimit = 100
-
     public var openSource: Int
     public var code: Int
+    public var openSourceLimit: Int
+    public var codeLimit: Int
+    /// True when the numbers start from what Snyk's Usage page said.
+    public var calibrated: Bool
 
-    public init(openSource: Int = 0, code: Int = 0) {
+    public init(openSource: Int = 0, code: Int = 0, openSourceLimit: Int = 400, codeLimit: Int = 100, calibrated: Bool = false) {
         self.openSource = openSource
         self.code = code
+        self.openSourceLimit = openSourceLimit
+        self.codeLimit = codeLimit
+        self.calibrated = calibrated
     }
 }
 
-/// Local estimate of how many Free plan tests this month's scans used.
-/// Snyk counts on its side; this only counts what this app ran.
+/// How many Free plan tests this month's scans used. Snyk counts on its side and offers no public number for it,
+/// so this counts what this app ran, starting from the figures the user copied from Snyk's Usage page when there are any.
 public enum UsageCalculator {
-    public static func thisMonth(_ runs: [ScanRun], now: Date = Date(), calendar: Calendar = .current) -> MonthlyUsage {
-        var usage = MonthlyUsage()
-        for run in runs where calendar.isDate(run.date, equalTo: now, toGranularity: .month) {
+    public static func thisMonth(_ runs: [ScanRun], now: Date = Date(), calendar: Calendar = .current,
+                                 settings: UsageSettings = UsageSettings()) -> MonthlyUsage {
+        var usage = MonthlyUsage(openSourceLimit: settings.openSourceLimit, codeLimit: settings.codeLimit)
+        var since = Date.distantPast
+        if let calibration = settings.calibration, calendar.isDate(calibration.date, equalTo: now, toGranularity: .month) {
+            usage.openSource = calibration.openSourceUsed
+            usage.code = calibration.codeUsed
+            usage.calibrated = true
+            since = calibration.date
+        }
+        for run in runs where calendar.isDate(run.date, equalTo: now, toGranularity: .month) && run.date > since {
             let projects = max(run.dependencyProjects, 1)
             if run.dependencies.consumedTest { usage.openSource += projects }
             if run.monitor.consumedTest { usage.openSource += projects }

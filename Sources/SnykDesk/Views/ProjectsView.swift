@@ -81,13 +81,20 @@ struct ProjectDetail: View {
     @State private var runId: String?
     @State private var filter: KindFilter = .all
     @State private var minimum: Severity = .low
+    @State private var showIgnored = false
+    @State private var ignoring: Finding?
 
     private var runs: [ScanRun] { model.runs[repo.id] ?? [] }
     private var run: ScanRun? { runs.first { $0.id == runId } ?? runs.first }
+    private var split: (open: [Finding], ignored: [(finding: Finding, rule: IgnoreRule)]) {
+        run?.splitIgnored(model.config.ignores) ?? ([], [])
+    }
+    private var shownRun: ScanRun? { run?.withoutIgnored(model.config.ignores) }
 
     private var findings: [Finding] {
-        guard let run else { return [] }
-        return run.findings.filter { finding in
+        guard run != nil else { return [] }
+        let pool = showIgnored ? split.ignored.map(\.finding) : split.open
+        return pool.filter { finding in
             let kindOK: Bool
             switch filter {
             case .all: kindOK = true
@@ -143,7 +150,7 @@ struct ProjectDetail: View {
                     Text(repo.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 Spacer()
-                if let run, !run.findings.isEmpty {
+                if let run, !split.open.isEmpty {
                     Menu {
                         ForEach(ReportFormat.allCases, id: \.self) { format in
                             Button("Save as \(format.rawValue)…") { saveReport(format, run: run) }
@@ -189,6 +196,13 @@ struct ProjectDetail: View {
                         }
                     }
                     .frame(maxWidth: 260)
+                    Picker("Show", selection: $showIgnored) {
+                        Text("Open (\(split.open.count))").tag(false)
+                        Text("Ignored (\(split.ignored.count))").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
                     Spacer()
                     Picker("Severity", selection: $minimum) {
                         Text("All").tag(Severity.low)
@@ -212,14 +226,18 @@ struct ProjectDetail: View {
                     .help("Copies a prompt with the vulnerabilities shown now (the severity and type filters apply). Paste it into a Claude project that has the code.")
                 }
 
-                RunSummary(run: run) { filter = $0; minimum = .low }
+                RunSummary(run: shownRun ?? run) { filter = $0; minimum = .low; showIgnored = false }
 
                 if findings.isEmpty {
-                    ContentUnavailableView("No vulnerabilities", systemImage: "checkmark.shield",
-                                           description: Text("Nothing matches the filters in this scan."))
+                    ContentUnavailableView(showIgnored ? "Nothing ignored" : "No vulnerabilities", systemImage: "checkmark.shield",
+                                           description: Text(showIgnored ? "No ignored vulnerabilities match the filters." : "Nothing matches the filters in this scan."))
                 } else {
+                    let rules = Dictionary(split.ignored.map { ($0.finding.id, $0.rule) }, uniquingKeysWith: { first, _ in first })
                     List(findings) { finding in
                         FindingRow(finding: finding,
+                                   ignoredRule: rules[finding.id],
+                                   ignore: { ignoring = finding },
+                                   unignore: { if let rule = rules[finding.id] { model.unignore(rule) } },
                                    copyDetails: { Clipboard.copy(PromptBuilder.findingText(finding)) },
                                    copyPrompt: { Clipboard.copy(singlePrompt(finding)) },
                                    copySameType: {
@@ -233,6 +251,60 @@ struct ProjectDetail: View {
             }
         }
         .padding(20)
+        .sheet(item: $ignoring) { finding in
+            IgnoreSheet(finding: finding) { reason, comment, days in
+                model.ignore(finding, repoId: repo.id, reason: reason, comment: comment, days: days)
+            }
+        }
+    }
+}
+
+struct IgnoreSheet: View {
+    let finding: Finding
+    let onIgnore: (IgnoreReason, String, Int?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var reason: IgnoreReason = .temporary
+    @State private var days = 30
+    @State private var comment = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Ignore this vulnerability").font(.title3.bold())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(finding.title).font(.body.bold())
+                Text(finding.location).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+            }
+            Picker("Reason", selection: $reason) {
+                ForEach(IgnoreReason.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            Picker("Ignore for", selection: $days) {
+                Text("30 days").tag(30)
+                Text("60 days").tag(60)
+                Text("90 days").tag(90)
+                Text("Never expires").tag(0)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Comment").font(.caption).foregroundStyle(.secondary)
+                TextEditor(text: $comment)
+                    .font(.body)
+                    .frame(height: 70)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3)))
+            }
+            Text("Kept in this app only. It hides the vulnerability from the lists, counts and reports and nothing is written into the repository. It comes back after the date, or when you press Unignore.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Ignore") {
+                    onIgnore(reason, comment.trimmingCharacters(in: .whitespacesAndNewlines), days == 0 ? nil : days)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(20)
+        .frame(width: 460)
     }
 }
 
@@ -282,6 +354,9 @@ enum Clipboard {
 
 struct FindingRow: View {
     let finding: Finding
+    var ignoredRule: IgnoreRule? = nil
+    var ignore: () -> Void = {}
+    var unignore: () -> Void = {}
     var copyDetails: () -> Void = {}
     var copyPrompt: () -> Void = {}
     var copySameType: () -> Void = {}
@@ -305,8 +380,21 @@ struct FindingRow: View {
                 if !finding.detail.isEmpty {
                     Text(finding.detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 }
+                if let rule = ignoredRule {
+                    Label(ignoreSummary(rule), systemImage: "eye.slash")
+                        .font(.caption).foregroundStyle(.orange)
+                }
             }
             Spacer()
+            if ignoredRule != nil {
+                Button("Unignore") { unignore() }
+                    .buttonStyle(.borderless)
+                    .help("Show this vulnerability in the lists and counts again")
+            } else {
+                Button { ignore() } label: { Image(systemName: "eye.slash") }
+                    .buttonStyle(.borderless)
+                    .help("Ignore this vulnerability: not vulnerable, won't fix, or a temporary ignore")
+            }
             Menu {
                 Button("Copy details") { copyDetails() }
                 Button("Copy with a prompt for Claude") { copyPrompt() }
@@ -328,5 +416,12 @@ struct FindingRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func ignoreSummary(_ rule: IgnoreRule) -> String {
+        var text = rule.reason.label
+        if let expires = rule.expires { text += " until \(expires.formatted(date: .abbreviated, time: .omitted))" }
+        if !rule.comment.isEmpty { text += ": \(rule.comment)" }
+        return text
     }
 }
